@@ -1,0 +1,6 @@
+{
+  "name": "WEARBOT - Outfit Recommendations",
+  "description": "Match your uploaded tops and bottoms with WEARBOT AI outfit recommendations and visually similar Pinterest inspiration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

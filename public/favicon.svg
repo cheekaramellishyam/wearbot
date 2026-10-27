@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Brand Red Background -->
+  <rect width="128" height="128" rx="28" fill="#e60023" />
+  
+  <!-- Continuous Line-Art Hanger with Spiral Hook -->
+  <g fill="none" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Hook & Central Spiral Loop -->
+    <path d="M 64 34 C 60 27 67 22 72 25 C 77 28 75 34 71 39 C 67 44 63 48 64 54 C 64.5 57 68 59 70 56.5 C 72 54 69.5 50.5 66 52 C 63 53.5 62 57 60 61" />
+    <!-- Left Shoulder & Bottom Bar & Right Shoulder Continuous Loop -->
+    <path d="M 60 61 C 46 68 28 75 18 80 C 14 82 13 87 18 88 L 110 88 C 115 87 114 82 110 80 C 100 75 82 68 68 61" />
+  </g>
+</svg>
