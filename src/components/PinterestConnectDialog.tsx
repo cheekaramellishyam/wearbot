@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WaveBackground } from "@/components/WaveBackground";
 
 interface PinterestUser {
   username: string;
@@ -142,7 +143,9 @@ export function PinterestConnectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md w-[95vw] p-5 sm:p-6 overflow-hidden bg-background">
+        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.6} />
+        <div className="relative z-10 space-y-4">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-pinterest/10 text-pinterest">
@@ -284,6 +287,7 @@ export function PinterestConnectDialog({
             Close
           </button>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

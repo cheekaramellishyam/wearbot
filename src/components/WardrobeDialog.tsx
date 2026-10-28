@@ -33,12 +33,15 @@ import {
   SavedOutfit,
 } from "@/lib/wardrobe";
 import { WardrobeHangerLogo } from "@/components/WardrobeHangerLogo";
+import { WaveBackground } from "@/components/WaveBackground";
 
 interface WardrobeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultTab?: "attire" | "gallery";
   onSelectGarment?: (file: File, category: "tops" | "bottoms" | "soles") => void;
+  onRemoveGarment?: (identifier: string, category: "tops" | "bottoms" | "soles") => void;
+  uploadedFiles?: { tops: File[]; bottoms: File[]; soles: File[] };
   uploadedCount?: number;
 }
 
@@ -47,6 +50,8 @@ export function WardrobeDialog({
   onOpenChange,
   defaultTab = "attire",
   onSelectGarment,
+  onRemoveGarment,
+  uploadedFiles,
   uploadedCount = 0,
 }: WardrobeDialogProps) {
   const [activeTab, setActiveTab] = useState<"attire" | "gallery">(defaultTab);
@@ -169,15 +174,41 @@ export function WardrobeDialog({
     return new File([blob], filename, { type: blob.type || "image/jpeg" });
   }
 
-  const handleAddGalleryItemToOutfit = async (item: GalleryItem) => {
+  const isItemAdded = (item: GalleryItem): boolean => {
+    if (addedItemIds[item.id]) return true;
+    const cat = item.category === "Top" ? "tops" : item.category === "Bottom" ? "bottoms" : "soles";
+    if (uploadedFiles && uploadedFiles[cat]) {
+      return uploadedFiles[cat].some((f) => f.name.includes(item.id));
+    }
+    return false;
+  };
+
+  const handleToggleGalleryItemToOutfit = async (item: GalleryItem) => {
+    const category =
+      item.category === "Top" ? "tops" : item.category === "Bottom" ? "bottoms" : "soles";
+    const targetLabel = item.category === "Top" ? "Tops" : item.category === "Bottom" ? "Bottoms" : "Soles";
+    const currentlyAdded = isItemAdded(item);
+
+    if (currentlyAdded) {
+      if (onRemoveGarment) {
+        onRemoveGarment(item.id, category);
+      }
+      setAddedItemIds((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      toast.info(`Removed from ${targetLabel}`, { duration: 1400 });
+      return;
+    }
+
     if (!onSelectGarment) return;
     try {
-      const category =
-        item.category === "Top" ? "tops" : item.category === "Bottom" ? "bottoms" : "soles";
       const filename = `${item.category.toLowerCase()}-${item.id}.jpg`;
       const file = await urlOrDataUrlToFile(item.imageUrl, filename);
       onSelectGarment(file, category);
       setAddedItemIds((prev) => ({ ...prev, [item.id]: true }));
+      toast.success(`Added to ${targetLabel}`, { duration: 1400 });
     } catch (e) {
       console.error("Failed to add image to outfit:", e);
       toast.error("Failed to add image to outfit");
@@ -197,9 +228,12 @@ export function WardrobeDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="fixed inset-0 z-50 flex h-dvh w-screen max-w-none max-h-none flex-col rounded-none sm:rounded-none border-none bg-background p-4 sm:p-6 md:p-8 shadow-none translate-x-0 translate-y-0 left-0 top-0 overflow-hidden">
+        <DialogContent className="max-w-6xl w-[95vw] h-[92vh] max-h-[92vh] flex flex-col p-4 sm:p-6 md:p-8 overflow-hidden bg-background">
+          {/* Abstract wave ribbon background matching reference inner box */}
+          <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.9} />
+
           {/* Header & Tabs */}
-          <DialogHeader className="border-b border-line pb-4 shrink-0">
+          <DialogHeader className="border-b border-line pb-4 shrink-0 relative z-10">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pr-8">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pinterest/10 text-pinterest border border-pinterest/20 shrink-0">
@@ -253,7 +287,7 @@ export function WardrobeDialog({
           </DialogHeader>
 
           {/* Section Body */}
-          <div className="flex-1 overflow-y-auto py-4">
+          <div className="flex-1 overflow-y-auto py-4 relative z-10">
             {/* 1. ATTIRE TAB */}
             {activeTab === "attire" && (
               <div>
@@ -510,19 +544,19 @@ export function WardrobeDialog({
                           <div className="p-2 pt-0">
                             <button
                               type="button"
-                              onClick={() => handleAddGalleryItemToOutfit(item)}
+                              onClick={() => handleToggleGalleryItemToOutfit(item)}
                               className={`w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 px-2 text-[11px] font-semibold transition-all cursor-pointer shadow-2xs ${
-                                addedItemIds[item.id]
+                                isItemAdded(item)
                                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
                                   : "bg-foreground text-background hover:opacity-90"
                               }`}
                             >
-                              {addedItemIds[item.id] ? (
+                              {isItemAdded(item) ? (
                                 <Check className="h-3 w-3" />
                               ) : (
                                 <Plus className="h-3 w-3" />
                               )}
-                              <span>{getButtonLabel(item.category, Boolean(addedItemIds[item.id]))}</span>
+                              <span>{getButtonLabel(item.category, isItemAdded(item))}</span>
                             </button>
                           </div>
                         </div>
@@ -571,20 +605,20 @@ export function WardrobeDialog({
             <button
               type="button"
               onClick={() => {
-                handleAddGalleryItemToOutfit(previewImage);
+                handleToggleGalleryItemToOutfit(previewImage);
               }}
               className={`w-full flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-semibold transition-all cursor-pointer shadow-2xs mt-1 ${
-                addedItemIds[previewImage.id]
+                isItemAdded(previewImage)
                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
                   : "bg-foreground text-background hover:opacity-90"
               }`}
             >
-              {addedItemIds[previewImage.id] ? (
+              {isItemAdded(previewImage) ? (
                 <Check className="h-3.5 w-3.5" />
               ) : (
                 <Plus className="h-3.5 w-3.5" />
               )}
-              <span>{getButtonLabel(previewImage.category, Boolean(addedItemIds[previewImage.id]))}</span>
+              <span>{getButtonLabel(previewImage.category, isItemAdded(previewImage))}</span>
             </button>
           </DialogContent>
         </Dialog>

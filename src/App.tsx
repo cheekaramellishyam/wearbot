@@ -10,6 +10,7 @@ import { FashionSearchDialog } from "@/components/FashionSearchDialog";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import { GenerationModeDialog } from "@/components/GenerationModeDialog";
 import { RefreshConfirmDialog } from "@/components/RefreshConfirmDialog";
+import { WaveBackground } from "@/components/WaveBackground";
 import { Toaster } from "@/components/ui/sonner";
 import { subscribeToAuth, GoogleUserProfile } from "@/lib/google-auth";
 import { getAiLimitState, recordAiGeneration, AiLimitState } from "@/lib/ai-limits";
@@ -94,6 +95,17 @@ export default function App() {
       setPants((prev) => (prev.length < 7 ? [...prev, file] : prev));
     } else if (category === "soles") {
       setShoes((prev) => (prev.length < 7 ? [...prev, file] : prev));
+    }
+    setRecs(null);
+  };
+
+  const handleRemoveGarment = (identifier: string, category: "tops" | "bottoms" | "soles") => {
+    if (category === "tops") {
+      setShirt((prev) => prev.filter((f) => !f.name.includes(identifier)));
+    } else if (category === "bottoms") {
+      setPants((prev) => prev.filter((f) => !f.name.includes(identifier)));
+    } else if (category === "soles") {
+      setShoes((prev) => prev.filter((f) => !f.name.includes(identifier)));
     }
     setRecs(null);
   };
@@ -398,7 +410,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
+    <div className="relative min-h-screen bg-background text-foreground flex flex-col font-sans overflow-x-clip">
+      {/* Abstract wave ribbon background matching reference inner box */}
+      <WaveBackground className="fixed inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.95} />
+
       <SiteHeader
         onOpenPinterest={() => setPinterestDialogOpen(true)}
         isPinterestConnected={isPinterestConnected}
@@ -413,7 +428,7 @@ export default function App() {
         onOpenProfile={() => setProfileOpen(true)}
       />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-10 sm:px-6 md:py-16">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-10 sm:px-6 md:py-16">
         {/* Upload Boxes: Tops | Bottoms | Soles */}
         <section className="flex w-full flex-col items-center gap-10 md:flex-row md:items-stretch md:justify-center md:gap-0">
           <div className="flex flex-1 justify-center md:pr-8">
@@ -454,13 +469,17 @@ export default function App() {
 
         <button
           type="button"
-          disabled={!ready || loading}
+          disabled={loading}
           onClick={() => {
+            if (!ready) {
+              toast.info("Please add at least 1 top and 1 bottom to generate outfits.");
+              return;
+            }
             const userKey = googleUser?.email || googleUser?.uid;
             setAiLimits(getAiLimitState(userKey));
             setGenerationDialogOpen(true);
           }}
-          className="mt-12 flex w-full max-w-md items-center justify-center gap-2 rounded-md bg-pinterest px-8 py-3 text-center text-base font-medium text-white transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-12 flex w-full max-w-md items-center justify-center gap-2 rounded-md bg-[#D3454A] px-8 py-3.5 text-center text-base font-semibold text-white shadow-md transition-all hover:bg-[#BD363B] active:bg-[#A6292E] hover:shadow-lg active:scale-[0.99] cursor-pointer"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? "Styling your outfits…" : "Generate Outfits"}
@@ -733,6 +752,8 @@ export default function App() {
         onOpenChange={setWardrobeOpen}
         defaultTab={wardrobeTab}
         onSelectGarment={handleAddGarmentFromSearch}
+        onRemoveGarment={handleRemoveGarment}
+        uploadedFiles={{ tops: shirt, bottoms: pants, soles: shoes }}
         uploadedCount={shirt.length + pants.length + shoes.length}
       />
 

@@ -25,7 +25,7 @@ export function SiteHeader({
   onOpenProfile,
 }: SiteHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-background">
+    <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/90 backdrop-blur-md">
       <div className="relative mx-auto flex h-16 max-w-6xl items-center justify-between px-3 sm:px-4 md:h-20 md:px-8">
         {/* Wardrobe & Refresh controls */}
         <div className="flex items-center">
@@ -60,7 +60,11 @@ export function SiteHeader({
         </div>
 
         {/* Brand Home Link */}
-        <a href="/" className="absolute left-1/2 -translate-x-1/2" aria-label="WEARBOT home">
+        <a
+          href="/"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-auto"
+          aria-label="WEARBOT home"
+        >
           <svg
             viewBox="0 0 175.45 28"
             className="h-4 w-auto text-foreground min-[400px]:h-5 md:h-7"

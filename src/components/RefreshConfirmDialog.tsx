@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WaveBackground } from "@/components/WaveBackground";
 
 interface RefreshConfirmDialogProps {
   open: boolean;
@@ -21,7 +22,9 @@ export function RefreshConfirmDialog({
 }: RefreshConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm p-5 sm:p-6">
+      <DialogContent className="max-w-sm w-[90vw] p-5 sm:p-6 overflow-hidden bg-background">
+        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.5} />
+        <div className="relative z-10">
         <DialogHeader className="text-left">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive mb-2">
             <RotateCcw className="h-5 w-5" />
@@ -52,6 +55,7 @@ export function RefreshConfirmDialog({
           >
             Yes, reset
           </button>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

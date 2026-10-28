@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { searchSimilarOutfitImages } from "./server/image-search";
 import {
   getPinterestAuthUrl,
@@ -35,12 +35,12 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Resilient helper for calling Gemini with fast timeout and multi-model fallback
+// Resilient helper for calling Gemini with generous timeout and low thinking latency
 async function callGeminiJson<T>(
   parts: any[],
   schema: any,
   systemInstruction: string,
-  timeoutMs = 6500
+  timeoutMs = 30000
 ): Promise<T> {
   if (!geminiApiKey) {
     throw new Error(
@@ -60,11 +60,17 @@ async function callGeminiJson<T>(
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: schema,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
         },
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout: Gemini ${model} took longer than ${timeoutMs}ms`)), timeoutMs)
+        setTimeout(
+          () => reject(new Error(`Timeout: Gemini ${model} took longer than ${timeoutMs}ms`)),
+          timeoutMs
+        )
       );
 
       const response = await Promise.race([callPromise, timeoutPromise]);
@@ -76,7 +82,12 @@ async function callGeminiJson<T>(
       return JSON.parse(text) as T;
     } catch (err: any) {
       lastError = err;
+      const isTimeout = err?.message?.includes("Timeout:");
       console.warn(`Gemini call with model ${model} failed:`, err?.message || err);
+      // If the primary model timed out after timeoutMs, don't double the wait with another timeout
+      if (isTimeout) {
+        break;
+      }
       continue;
     }
   }
@@ -90,7 +101,8 @@ async function callGeminiJson<T>(
 function generateStylistRecommendations(
   tops: ClothingAnalysis[],
   bottoms: ClothingAnalysis[],
-  soles?: ClothingAnalysis[]
+  soles?: ClothingAnalysis[],
+  isAiFallback = false
 ): OutfitRecommendation[] {
   const hasSoles = Array.isArray(soles) && soles.length > 0;
   const combos: OutfitRecommendation[] = [];
@@ -118,7 +130,7 @@ function generateStylistRecommendations(
         for (let s = 0; s < soles.length; s++) {
           const sole = soles[s];
           const soleColor = (sole.primaryColor || "White").toLowerCase();
-          const soleType = sole.type || "sneakers";
+          const soleType = sole.type || "footwear";
 
           let score = 8;
           if (topColor !== bottomColor) score += 1;
@@ -127,6 +139,7 @@ function generateStylistRecommendations(
 
           const colorDesc = `${capitalize(topColor)} + ${capitalize(bottomColor)} + ${capitalize(soleColor)}`;
           const reason = `The ${topColor} ${topType} coordinates naturally with the ${bottomColor} ${bottomType}, balanced by the ${soleColor} ${soleType} for cohesive proportions and effortless contrast.`;
+          const occasion = occasions[(t + b + s) % occasions.length];
 
           combos.push({
             top: t + 1,
@@ -135,9 +148,9 @@ function generateStylistRecommendations(
             score: Math.min(10, Math.round(score)),
             style: capitalize(top.style || bottom.style || "Smart Casual"),
             colors: colorDesc,
-            reason: "",
-            occasion: "",
-            isBasic: true,
+            reason,
+            occasion,
+            isBasic: !isAiFallback,
           });
         }
       } else {
@@ -147,6 +160,8 @@ function generateStylistRecommendations(
         if (["beige", "black", "navy", "khaki", "grey"].includes(bottomColor)) score += 0.5;
 
         const colorDesc = `${capitalize(topColor)} + ${capitalize(bottomColor)}`;
+        const reason = `The ${topColor} ${topType} creates a balanced and stylish outfit with the ${bottomColor} ${bottomType}, offering versatile appeal and complementary tones.`;
+        const occasion = occasions[(t + b) % occasions.length];
 
         combos.push({
           top: t + 1,
@@ -154,9 +169,9 @@ function generateStylistRecommendations(
           score: Math.min(10, Math.round(score)),
           style: capitalize(top.style || bottom.style || "Smart Casual"),
           colors: colorDesc,
-          reason: "",
-          occasion: "",
-          isBasic: true,
+          reason,
+          occasion,
+          isBasic: !isAiFallback,
         });
       }
     }
@@ -339,7 +354,10 @@ const pinterestCallbackHandler = async (req: Request, res: Response) => {
   `);
 };
 
-app.get(["/auth/pinterest/callback", "/auth/pinterest/callback/"], pinterestCallbackHandler);
+app.get(
+  ["/auth/pinterest/callback", "/auth/pinterest/callback/", "/api/auth/pinterest/callback"],
+  pinterestCallbackHandler
+);
 
 // 3. Pinterest Connection Status
 app.get("/api/auth/pinterest/status", async (req: Request, res: Response) => {
@@ -458,10 +476,13 @@ app.post("/api/outfits/analyse", async (req: Request, res: Response) => {
 
     let resultItems: ClothingAnalysis[] = [];
     try {
+      // Allow up to 45 seconds for image analysis (scaled with image count)
+      const analyseTimeout = Math.min(60000, Math.max(35000, images.length * 8000));
       const result = await callGeminiJson<{ items: ClothingAnalysis[] }>(
         parts,
         schema,
-        systemInstruction
+        systemInstruction,
+        analyseTimeout
       );
       if (Array.isArray(result?.items) && result.items.length === images.length) {
         resultItems = result.items;
@@ -514,12 +535,16 @@ app.post("/api/outfits/recommend", async (req: Request, res: Response) => {
     }
 
     const hasSoles = Array.isArray(soles) && soles.length > 0;
+    const maxCombos = Math.min(4, tops.length * bottoms.length * (hasSoles ? soles.length : 1));
 
-    let textPrompt = `Tops:\n${JSON.stringify(
-      tops.map((t, i) => ({ index: i + 1, ...t }))
-    )}\n\nBottoms:\n${JSON.stringify(
-      bottoms.map((b, i) => ({ index: i + 1, ...b }))
-    )}`;
+    let textPrompt = `Generate up to ${maxCombos} distinct outfit combinations from these uploaded items.\n` +
+      `STRICT INDEX RULES: Tops index MUST be 1 to ${tops.length}. Bottoms index MUST be 1 to ${bottoms.length}.${hasSoles ? ` Soles index MUST be 1 to ${soles.length}.` : ""}\n` +
+      `Never use an index outside these exact bounds.\n\n` +
+      `Tops:\n${JSON.stringify(
+        tops.map((t, i) => ({ index: i + 1, ...t }))
+      )}\n\nBottoms:\n${JSON.stringify(
+        bottoms.map((b, i) => ({ index: i + 1, ...b }))
+      )}`;
 
     if (hasSoles) {
       textPrompt += `\n\nSoles (Footwear):\n${JSON.stringify(
@@ -559,8 +584,8 @@ app.post("/api/outfits/recommend", async (req: Request, res: Response) => {
     };
 
     const systemInstruction = hasSoles
-      ? "You are an expert stylist. Evaluate every combination of top + bottom + sole (footwear) for colour harmony, pattern compatibility, style consistency, footwear cohesion, and occasion suitability. Return the best 4 distinct complete outfit combinations (fewer only if fewer exist), best first. CRITICAL VARIETY RULE: Rotate through the available footwear so each recommendation pairs a different sole when multiple soles are provided, and rotate through available shirts and pants. For each: top, bottom, and sole (1-based indexes), score (integer 1-10 compatibility), style (outfit style name), colors (the colour combination, e.g. 'Navy + beige + white sneakers'), reason (one or two sentences explaining why the pieces and footwear work together), occasion. Only use indexes that exist."
-      : "You are an expert stylist. Evaluate every top+bottom combination for colour harmony, pattern compatibility, style consistency and occasion suitability. Return the best 4 distinct combinations (fewer only if fewer exist), best first. CRITICAL VARIETY RULE: Rotate through available shirts and pants so the recommendations do not repeat the same shirt when multiple are provided. For each: top and bottom (1-based indexes), score (integer 1-10 compatibility), style (outfit style name), colors (the colour combination, e.g. 'Navy + beige'), reason (one or two sentences why it works), occasion. Only use indexes that exist.";
+      ? "You are an expert fashion stylist. Evaluate combinations of top + bottom + sole for colour harmony, pattern matching, style aesthetics, and occasion appropriateness. Return distinct outfit combinations, best first. For each provide: top (1-based index), bottom (1-based index), sole (1-based index), score (compatibility rating integer 1-10), style (e.g. 'Smart Casual', 'Streetwear', 'Summer Minimal'), colors (e.g. 'Navy + beige + white sneakers'), reason (a detailed two-sentence explanation of why these colors, fabrics, and proportions complement each other), occasion (e.g. 'Weekend brunch / Casual hangout'). ONLY use valid top, bottom, and sole indexes."
+      : "You are an expert fashion stylist. Evaluate combinations of top + bottom for colour harmony, pattern matching, style aesthetics, and occasion appropriateness. Return distinct outfit combinations, best first. For each provide: top (1-based index), bottom (1-based index), score (compatibility rating integer 1-10), style (e.g. 'Smart Casual', 'Streetwear', 'Clean Minimal'), colors (e.g. 'Navy + beige'), reason (a detailed two-sentence explanation of why these colors, textures, and proportions complement each other), occasion (e.g. 'Dinner date / Evening out'). ONLY use valid top and bottom indexes.";
 
     let recommendations: OutfitRecommendation[] = [];
 
@@ -568,42 +593,45 @@ app.post("/api/outfits/recommend", async (req: Request, res: Response) => {
       const result = await callGeminiJson<{ recommendations: OutfitRecommendation[] }>(
         [{ text: textPrompt }],
         schema,
-        systemInstruction
+        systemInstruction,
+        30000
       );
 
       const raw = result.recommendations ?? [];
-      // Normalize 0-based indexing if the AI model output was 0-indexed
       const isZeroIndexed = raw.some(
         (r) => r.top === 0 || r.bottom === 0 || (hasSoles && r.sole === 0)
       );
 
       recommendations = raw
         .map((r) => {
-          const topIdx = isZeroIndexed ? r.top + 1 : r.top;
-          const bottomIdx = isZeroIndexed ? r.bottom + 1 : r.bottom;
-          const soleIdx = r.sole !== undefined ? (isZeroIndexed ? r.sole + 1 : r.sole) : undefined;
+          let topIdx = isZeroIndexed ? r.top + 1 : r.top;
+          let bottomIdx = isZeroIndexed ? r.bottom + 1 : r.bottom;
+          let soleIdx = r.sole !== undefined ? (isZeroIndexed ? r.sole + 1 : r.sole) : undefined;
+
+          // Clamp to valid range so no recommendation with good reasoning is lost
+          topIdx = Math.max(1, Math.min(tops.length, topIdx || 1));
+          bottomIdx = Math.max(1, Math.min(bottoms.length, bottomIdx || 1));
+          if (hasSoles) {
+            soleIdx = Math.max(1, Math.min(soles.length, soleIdx || 1));
+          }
+
           return {
             ...r,
             top: topIdx,
             bottom: bottomIdx,
             sole: soleIdx,
-            score: Math.min(10, Math.max(1, Math.round(r.score || 8))),
+            score: Math.min(10, Math.max(1, Math.round(r.score || 9))),
+            isBasic: false,
           };
-        })
-        .filter((r) => {
-          const topValid = r.top >= 1 && r.top <= tops.length;
-          const bottomValid = r.bottom >= 1 && r.bottom <= bottoms.length;
-          const soleValid = !hasSoles || (r.sole !== undefined && r.sole >= 1 && r.sole <= soles.length);
-          return topValid && bottomValid && soleValid;
         })
         .slice(0, 4);
     } catch (aiErr: any) {
       console.warn("Gemini recommendation failed, using stylist harmony engine fallback:", aiErr?.message || aiErr);
     }
 
-    // If Gemini was unavailable or returned empty/invalid indexes, seamlessly use stylist engine
+    // If Gemini was unavailable or returned empty, seamlessly use stylist engine with full details
     if (!recommendations.length) {
-      recommendations = generateStylistRecommendations(tops, bottoms, soles);
+      recommendations = generateStylistRecommendations(tops, bottoms, soles, true);
     }
 
     res.json({ recommendations });

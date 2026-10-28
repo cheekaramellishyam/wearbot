@@ -3,12 +3,12 @@ interface WardrobeHangerLogoProps {
 }
 
 export function WardrobeHangerLogo({
-  className = "h-5 sm:h-6 md:h-7 w-auto",
+  className = "h-5 sm:h-6 md:h-7 w-auto text-foreground",
 }: WardrobeHangerLogoProps) {
   return (
     <svg
       viewBox="0 0 144 48"
-      className={`${className} text-foreground select-none transition-transform duration-150 group-hover:scale-105 shrink-0`}
+      className={`${className} select-none transition-transform duration-150 group-hover:scale-105 shrink-0`}
       aria-hidden="true"
       focusable="false"
       xmlns="http://www.w3.org/2000/svg"

@@ -1,6 +1,7 @@
 import React from "react";
 import { Sparkles, Shuffle, X, AlertCircle, Zap } from "lucide-react";
 import { AiLimitState } from "@/lib/ai-limits";
+import { WaveBackground } from "@/components/WaveBackground";
 
 interface GenerationModeDialogProps {
   open: boolean;
@@ -10,6 +11,7 @@ interface GenerationModeDialogProps {
   hasSoles: boolean;
   topsCount: number;
   bottomsCount: number;
+  buttonColor?: string;
 }
 
 export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
@@ -17,6 +19,7 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
   onClose,
   onSelectMode,
   limits,
+  buttonColor,
 }) => {
   if (!open) return null;
 
@@ -26,10 +29,14 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div
-        className="relative w-full max-w-md rounded-2xl border border-line bg-card p-5 sm:p-6 shadow-xl text-card-foreground animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-md rounded-2xl border border-line bg-background p-5 sm:p-6 shadow-xl text-foreground animate-in zoom-in-95 duration-150 overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
+        {/* Abstract wave ribbon background matching reference inner box */}
+        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.65} />
+
+        <div className="relative z-10">
         {/* Close Button */}
         <button
           type="button"
@@ -148,7 +155,7 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectMode("ai")}
-                className="mt-3.5 w-full flex items-center justify-center gap-2 rounded-lg bg-pinterest py-2.5 text-xs font-semibold text-white hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                className="mt-3.5 w-full flex items-center justify-center gap-2 rounded-lg bg-[#D3454A] py-2.5 text-xs font-semibold text-white hover:bg-[#BD363B] active:bg-[#A6292E] transition-colors cursor-pointer shadow-xs"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>Generate with AI</span>
@@ -165,6 +172,7 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
           >
             Cancel
           </button>
+        </div>
         </div>
       </div>
     </div>

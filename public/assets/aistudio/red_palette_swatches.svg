@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; fill: #111111; }
+      .subtitle { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; fill: #555555; }
+      .card-bg { fill: #e5e5e5; stroke: #b8b8b8; stroke-width: 1; rx: 10px; }
+      .swatch-name { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 14px; fill: #111111; }
+      .swatch-hex { font-family: monospace; font-size: 12px; font-weight: 600; fill: #444444; }
+      .swatch-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; fill: #666666; }
+      .btn-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; font-weight: 600; fill: #ffffff; }
+    </style>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Canvas background matching exact app grey -->
+  <rect width="900" height="560" fill="#dddddd"/>
+
+  <!-- Wave ribbon background accent -->
+  <path d="M0,450 C250,380 450,520 700,430 C800,390 850,420 900,400 L900,560 L0,560 Z" fill="#cfcfcf" opacity="0.6"/>
+  <path d="M0,480 C200,420 500,540 750,460 C830,430 870,450 900,440 L900,560 L0,560 Z" fill="#c3c3c3" opacity="0.4"/>
+
+  <!-- Header -->
+  <g transform="translate(40, 42)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#111111"/>
+    <path d="M12,18 C12,14.686 14.686,12 18,12 C21.314,12 24,14.686 24,18 C24,21 21.5,23.5 19,23.5 L17,23.5 C15.895,23.5 15,24.395 15,25.5 C15,26.052 14.552,26.5 14,26.5 C12.895,26.5 12,23 12,18 Z" fill="#ffffff"/>
+    <text class="title" x="48" y="22" font-size="20">Red Colour Palette Consultation</text>
+    <text class="subtitle" x="48" y="38">Evaluated against the exact #dddddd neutral background from a viewing distance of 1 metre</text>
+  </g>
+
+  <!-- ROW 1 -->
+
+  <!-- Card 1: Venetian Terra Cotta -->
+  <g transform="translate(40, 105)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#C84B42"/>
+    <text class="swatch-name" x="126" y="36">1. Venetian Terra Cotta</text>
+    <text class="swatch-hex" x="126" y="54">#C84B42 · rgb(200, 75, 66)</text>
+    <text class="swatch-desc" x="126" y="74">Warm, sun-baked clay tone. Completely eliminates glare</text>
+    <text class="swatch-desc" x="126" y="88">while maintaining an inviting, earthy presence.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#C84B42"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+
+  <!-- Card 2: Vintage Bordeaux -->
+  <g transform="translate(465, 105)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#A82835"/>
+    <text class="swatch-name" x="126" y="36">2. Vintage Bordeaux</text>
+    <text class="swatch-hex" x="126" y="54">#A82835 · rgb(168, 40, 53)</text>
+    <text class="swatch-desc" x="126" y="74">Deep aged wine red. High legibility and quiet luxury.</text>
+    <text class="swatch-desc" x="126" y="88">Anchors the interface without vibrating against grey.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#A82835"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+
+  <!-- ROW 2 -->
+
+  <!-- Card 3: Muted Vermilion -->
+  <g transform="translate(40, 250)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#D3454A"/>
+    <text class="swatch-name" x="126" y="36">3. Muted Vermilion (Recommended)</text>
+    <text class="swatch-hex" x="126" y="54">#D3454A · rgb(211, 69, 74)</text>
+    <text class="swatch-desc" x="126" y="74">Clean studio red, desaturated by ~15%. Still unmistakably</text>
+    <text class="swatch-desc" x="126" y="88">red and energetic, but completely eliminates eye strain.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#D3454A"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+
+  <!-- Card 4: Antique Coral Rose -->
+  <g transform="translate(465, 250)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#E05A67"/>
+    <text class="swatch-name" x="126" y="36">4. Antique Coral Rose</text>
+    <text class="swatch-hex" x="126" y="54">#E05A67 · rgb(224, 90, 103)</text>
+    <text class="swatch-desc" x="126" y="74">Soft fashion-editorial blush red. Very gentle edges and</text>
+    <text class="swatch-desc" x="126" y="88">seamless harmony with greyscale minimalism.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#E05A67"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+
+  <!-- ROW 3 -->
+
+  <!-- Card 5: Japanese Rust (Bengara) -->
+  <g transform="translate(40, 395)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#BA3D33"/>
+    <text class="swatch-name" x="126" y="36">5. Japanese Rust (Bengara)</text>
+    <text class="swatch-hex" x="126" y="54">#BA3D33 · rgb(186, 61, 51)</text>
+    <text class="swatch-desc" x="126" y="74">Traditional iron-oxide heritage brick. Earthy, organic,</text>
+    <text class="swatch-desc" x="126" y="88">and designed to blend naturally with grey surfaces.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#BA3D33"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+
+  <!-- Card 6: Current Bold Red (For Comparison) -->
+  <g transform="translate(465, 395)" filter="url(#shadow)">
+    <rect class="card-bg" width="395" height="130"/>
+    <!-- Swatch Block -->
+    <rect x="16" y="16" width="98" height="98" rx="8" fill="#E60023"/>
+    <text class="swatch-name" x="126" y="36">Current: Pure Saturated Red</text>
+    <text class="swatch-hex" x="126" y="54">#E60023 · rgb(230, 0, 35)</text>
+    <text class="swatch-desc" x="126" y="74">High-intensity crimson. Pops with maximum contrast,</text>
+    <text class="swatch-desc" x="126" y="88">which is currently causing glare at a distance.</text>
+    <!-- Sample mini button -->
+    <rect x="126" y="96" width="150" height="26" rx="5" fill="#E60023"/>
+    <text class="btn-text" x="201" y="113" text-anchor="middle">Generate Outfits</text>
+  </g>
+</svg>

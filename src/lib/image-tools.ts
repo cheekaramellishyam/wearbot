@@ -2,8 +2,8 @@
 
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB max to support modern phone cameras
-const MAX_DIMENSION = 2048;
-const QUALITY = 0.85;
+const MAX_DIMENSION = 1024;
+const QUALITY = 0.8;
 
 export function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;

@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WaveBackground } from "@/components/WaveBackground";
 
 interface WebFashionItem {
   id: string;
@@ -136,9 +137,12 @@ export function FashionSearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[88vh] flex flex-col p-4 sm:p-6 overflow-hidden">
+      <DialogContent className="max-w-4xl w-[95vw] h-[88vh] max-h-[88vh] flex flex-col p-4 sm:p-6 overflow-hidden bg-background">
+        {/* Abstract wave ribbon background matching reference inner box */}
+        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.75} />
+
         {/* Search Header */}
-        <DialogHeader className="border-b border-line pb-4">
+        <DialogHeader className="border-b border-line pb-4 relative z-10">
           <div className="flex items-center justify-between pr-6">
             <div className="flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -196,7 +200,7 @@ export function FashionSearchDialog({
         </DialogHeader>
 
         {/* Results Grid / Feedback */}
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="flex-1 overflow-y-auto py-4 relative z-10">
           {/* Non-Fashion Guardrail Notice */}
           {nonFashionError ? (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

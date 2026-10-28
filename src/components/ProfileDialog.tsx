@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WaveBackground } from "@/components/WaveBackground";
 import {
   GoogleUserProfile,
   signInWithGoogle,
@@ -61,34 +62,38 @@ export function ProfileDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-6">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground">
-              {user ? (
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1a73e8] text-white text-sm font-bold shadow-2xs">
-                  {user.initials}
-                </div>
-              ) : (
-                <User className="h-5 w-5" />
-              )}
+      <DialogContent className="max-w-md w-[95vw] p-6 overflow-hidden bg-background">
+        {/* Abstract wave ribbon background matching reference inner box */}
+        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.7} />
+
+        <div className="relative z-10">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground">
+                {user ? (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1a73e8] text-white text-sm font-bold shadow-2xs">
+                    {user.initials}
+                  </div>
+                ) : (
+                  <User className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">
+                  {user ? "Google Account" : "Sign in to WearBot"}
+                </DialogTitle>
+                {user ? (
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Connected with your Google profile
+                  </DialogDescription>
+                ) : (
+                  <DialogDescription className="sr-only">
+                    Google account sign-in
+                  </DialogDescription>
+                )}
+              </div>
             </div>
-            <div>
-              <DialogTitle className="text-lg font-bold">
-                {user ? "Google Account" : "Sign in to WearBot"}
-              </DialogTitle>
-              {user ? (
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Connected with your Google profile
-                </DialogDescription>
-              ) : (
-                <DialogDescription className="sr-only">
-                  Google account sign-in
-                </DialogDescription>
-              )}
-            </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
         {user ? (
           /* Signed In State */
@@ -206,6 +211,7 @@ export function ProfileDialog({
             </button>
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );
