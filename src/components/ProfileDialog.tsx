@@ -40,7 +40,11 @@ export function ProfileDialog({
     } catch (err: any) {
       if (err?.code !== "auth/popup-closed-by-user") {
         console.error("Sign-in error:", err);
-        toast.error(err?.message || "Google sign-in could not be completed.");
+        const isConfigErr =
+          err?.code === "auth/unauthorized-domain" || err?.code === "auth/operation-not-allowed";
+        toast.error(err?.message || "Google sign-in could not be completed.", {
+          duration: isConfigErr ? 8000 : 4000,
+        });
       }
     } finally {
       setLoading(false);

@@ -1,13 +1,11 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-  getAuth,
   signInWithPopup,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
 } from "firebase/auth";
-import firebaseConfig from "../../firebase-applet-config.json";
+import { auth } from "./firebase";
 
 export const SCOPES = [
   "openid",
@@ -15,11 +13,7 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
 ];
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
-
 const provider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => provider.addScope(scope));
 provider.setCustomParameters({
   prompt: "select_account",
 });
@@ -66,8 +60,34 @@ export function mapUserToProfile(user: User): GoogleUserProfile {
 }
 
 export async function signInWithGoogle(): Promise<GoogleUserProfile> {
-  const result = await signInWithPopup(auth, provider);
-  return mapUserToProfile(result.user);
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return mapUserToProfile(result.user);
+  } catch (error: any) {
+    if (error?.code === "auth/unauthorized-domain") {
+      const currentHost = typeof window !== "undefined" ? window.location.hostname : "your app domain";
+      const customErr = new Error(
+        `Domain not authorized in Firebase. Please add "${currentHost}" in Firebase Console > Authentication > Settings > Authorized domains.`
+      );
+      (customErr as any).code = error.code;
+      throw customErr;
+    }
+    if (error?.code === "auth/operation-not-allowed") {
+      const customErr = new Error(
+        'Google sign-in is not enabled. Go to Firebase Console > Authentication > Sign-in method and enable "Google".'
+      );
+      (customErr as any).code = error.code;
+      throw customErr;
+    }
+    if (error?.code === "auth/popup-blocked") {
+      const customErr = new Error(
+        "Sign-in popup was blocked by your browser. Please allow popups for this window and try again."
+      );
+      (customErr as any).code = error.code;
+      throw customErr;
+    }
+    throw error;
+  }
 }
 
 export async function signOutGoogle(): Promise<void> {
