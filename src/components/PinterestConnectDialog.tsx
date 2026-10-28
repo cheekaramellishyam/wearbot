@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, Copy, ExternalLink, Key, Loader2, LogOut, ShieldCheck } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { PinterestLogo } from "@/components/PinterestLogo";
 import {
@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { WaveBackground } from "@/components/WaveBackground";
 
 interface PinterestUser {
   username: string;
@@ -33,13 +32,6 @@ export function PinterestConnectDialog({
   const [statusLoading, setStatusLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [user, setUser] = useState<PinterestUser | null>(null);
-  const [oauthConfigured, setOauthConfigured] = useState(false);
-  const [redirectUri, setRedirectUri] = useState("");
-  const [copiedDev, setCopiedDev] = useState(false);
-  const [copiedShared, setCopiedShared] = useState(false);
-
-  const devCallback = "https://ais-dev-ehjtpiuor7f4ybt7sthnbb-782280690151.asia-southeast1.run.app/auth/pinterest/callback";
-  const sharedCallback = "https://ais-pre-ehjtpiuor7f4ybt7sthnbb-782280690151.asia-southeast1.run.app/auth/pinterest/callback";
 
   const checkStatus = async () => {
     setStatusLoading(true);
@@ -49,8 +41,6 @@ export function PinterestConnectDialog({
         const data = await res.json();
         setConnected(data.connected);
         setUser(data.user || null);
-        setOauthConfigured(data.oauthConfigured);
-        if (data.redirectUri) setRedirectUri(data.redirectUri);
         onConnectedChange?.(data.connected);
       }
     } catch (e) {
@@ -91,7 +81,7 @@ export function PinterestConnectDialog({
       if (!res.ok || !data.url) {
         throw new Error(
           data.error ||
-            "Pinterest OAuth credentials (PINTEREST_APP_ID) are not configured in Secrets."
+            "Pinterest OAuth credentials are not configured in Secrets."
         );
       }
 
@@ -129,164 +119,105 @@ export function PinterestConnectDialog({
     }
   };
 
-  const copyToClipboard = (text: string, isDev: boolean) => {
-    navigator.clipboard.writeText(text);
-    if (isDev) {
-      setCopiedDev(true);
-      setTimeout(() => setCopiedDev(false), 2000);
-    } else {
-      setCopiedShared(true);
-      setTimeout(() => setCopiedShared(false), 2000);
-    }
-    toast.success("Callback URL copied to clipboard!");
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-[95vw] p-5 sm:p-6 overflow-hidden bg-background">
-        <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.6} />
-        <div className="relative z-10 space-y-4">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-pinterest/10 text-pinterest">
-              <PinterestLogo className="h-5 w-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-lg">Pinterest Integration</DialogTitle>
-              <DialogDescription className="text-xs">
-                Connect official Pinterest access for live outfit inspiration.
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {statusLoading ? (
-          <div className="flex h-32 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-pinterest" />
-          </div>
-        ) : connected ? (
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex items-center gap-3 rounded-lg border border-line bg-muted/30 p-3">
-              {user?.profile_image ? (
-                <img
-                  src={user.profile_image}
-                  alt={user.username}
-                  className="h-12 w-12 rounded-full object-cover"
-                />
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pinterest text-white">
-                  <PinterestLogo className="h-6 w-6" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-sm font-semibold">{user?.username}</p>
-                  <ShieldCheck className="h-4 w-4 text-green-600" />
-                </div>
-                <p className="text-xs text-muted-foreground">Connected to Pinterest API v5</p>
+      <DialogContent className="max-w-md w-[95vw] p-5 sm:p-6 bg-background rounded-xl border border-line shadow-xl">
+        <div className="space-y-4">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pinterest/10 text-pinterest">
+                <PinterestLogo className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Pinterest Integration</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Connect personal Pinterest boards or enjoy built-in visual outfit matching.
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Your Pinterest account is connected. Visually similar outfit searches will
-              prioritize live inspiration directly from your boards and Pinterest API.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleDisconnect}
-              className="flex items-center justify-center gap-2 rounded-md border border-line px-4 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Disconnect Pinterest Account
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 py-1">
-            <div className="rounded-md border border-line bg-accent/20 p-3 text-xs leading-relaxed text-muted-foreground">
-              WEARBOT already displays real Pinterest outfits out-of-the-box. Connecting official
-              Pinterest access grants personalized access to your pins and boards.
+          {statusLoading ? (
+            <div className="flex h-32 items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-pinterest" />
             </div>
-
-            <button
-              type="button"
-              onClick={handleConnect}
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-pinterest px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PinterestLogo className="h-4 w-4" />
-              )}
-              {loading ? "Opening Pinterest…" : "Connect with Pinterest"}
-            </button>
-
-            {/* Developer Setup Instructions */}
-            <div className="border-t border-line/60 pt-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Key className="h-3.5 w-3.5" />
-                <span>Pinterest Developer Setup</span>
+          ) : connected ? (
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex items-center gap-3 rounded-lg border border-line bg-muted/40 p-3.5">
+                {user?.profile_image ? (
+                  <img
+                    src={user.profile_image}
+                    alt={user.username}
+                    className="h-12 w-12 rounded-full object-cover border border-line shadow-xs"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pinterest text-white shadow-xs">
+                    <PinterestLogo className="h-6 w-6" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-sm font-semibold">{user?.username}</p>
+                    <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Connected to Pinterest API v5</p>
+                </div>
               </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                To enable 1-click OAuth login, create an app at{" "}
-                <a
-                  href="https://developers.pinterest.com/apps/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-pinterest inline-flex items-center gap-0.5"
-                >
-                  developers.pinterest.com <ExternalLink className="h-2.5 w-2.5" />
-                </a>{" "}
-                and add these redirect URIs:
+
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Your Pinterest account is connected. Visually similar outfit searches will prioritize
+                live inspiration directly from your boards and pins.
               </p>
 
-              <div className="mt-2 space-y-1.5">
-                <div className="rounded border border-line bg-muted/40 p-1.5 text-[10px]">
-                  <div className="flex items-center justify-between font-mono text-muted-foreground">
-                    <span className="truncate pr-2">{devCallback}</span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(devCallback, true)}
-                      className="p-1 hover:text-foreground"
-                    >
-                      {copiedDev ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded border border-line bg-muted/40 p-1.5 text-[10px]">
-                  <div className="flex items-center justify-between font-mono text-muted-foreground">
-                    <span className="truncate pr-2">{sharedCallback}</span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(sharedCallback, false)}
-                      className="p-1 hover:text-foreground"
-                    >
-                      {copiedShared ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-2 text-[11px] text-muted-foreground">
-                Then set <code className="bg-muted px-1 rounded">PINTEREST_APP_ID</code> and{" "}
-                <code className="bg-muted px-1 rounded">PINTEREST_APP_SECRET</code> (or{" "}
-                <code className="bg-muted px-1 rounded">PINTEREST_ACCESS_TOKEN</code>) in Secrets.
-              </div>
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                className="flex items-center justify-center gap-2 rounded-md border border-line py-2 px-4 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Disconnect Pinterest Account
+              </button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col gap-4 py-1">
+              {/* Informative banner clarifying that Pinterest is 100% optional */}
+              <div className="rounded-lg border border-line/70 bg-accent/30 p-3.5 text-xs leading-relaxed">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles className="h-4 w-4 text-pinterest shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-foreground">Built-in Fashion Search Active: </span>
+                    <span className="text-muted-foreground">
+                      WEARBOT already retrieves similar outfit inspiration out-of-the-box. Linking official Pinterest is completely optional and only needed to sync your personal boards.
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-        <DialogFooter>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded-md border border-line px-4 py-2 text-xs font-medium hover:bg-accent transition-colors"
-          >
-            Close
-          </button>
-        </DialogFooter>
+              <button
+                type="button"
+                onClick={handleConnect}
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-pinterest py-2.5 px-4 text-sm font-semibold text-white shadow-xs hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PinterestLogo className="h-4 w-4" />
+                )}
+                <span>{loading ? "Opening Pinterest…" : "Connect with Pinterest"}</span>
+              </button>
+            </div>
+          )}
+
+          <DialogFooter className="pt-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="w-full sm:w-auto rounded-lg border border-line py-2 px-5 text-xs font-semibold hover:bg-accent transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>

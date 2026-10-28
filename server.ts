@@ -275,7 +275,7 @@ function getRedirectUri(req: Request): string {
 }
 
 // 1. Get Pinterest Authorization URL
-app.get("/api/auth/pinterest/url", (req: Request, res: Response) => {
+app.get(["/api/auth/pinterest/url", "/auth/pinterest/url"], (req: Request, res: Response) => {
   const redirectUri = getRedirectUri(req);
   const result = getPinterestAuthUrl(redirectUri);
   if (result.error) {
@@ -360,7 +360,7 @@ app.get(
 );
 
 // 3. Pinterest Connection Status
-app.get("/api/auth/pinterest/status", async (req: Request, res: Response) => {
+app.get(["/api/auth/pinterest/status", "/auth/pinterest/status"], async (req: Request, res: Response) => {
   const token = req.cookies?.pinterest_token || process.env.PINTEREST_ACCESS_TOKEN;
   const appId = Boolean(process.env.PINTEREST_APP_ID || process.env.PINTEREST_CLIENT_ID);
 
@@ -385,7 +385,7 @@ app.get("/api/auth/pinterest/status", async (req: Request, res: Response) => {
 });
 
 // 4. Disconnect Pinterest
-app.post("/api/auth/pinterest/disconnect", (_req: Request, res: Response) => {
+app.post(["/api/auth/pinterest/disconnect", "/auth/pinterest/disconnect"], (_req: Request, res: Response) => {
   res.clearCookie("pinterest_token", {
     secure: true,
     sameSite: "none",
@@ -396,7 +396,7 @@ app.post("/api/auth/pinterest/disconnect", (_req: Request, res: Response) => {
 // ----------------- OUTFIT APIS -----------------
 
 // Image clothing analysis endpoint
-app.post("/api/outfits/analyse", async (req: Request, res: Response) => {
+app.post(["/api/outfits/analyse", "/outfits/analyse"], async (req: Request, res: Response) => {
   try {
     const { images } = req.body;
     if (!Array.isArray(images) || images.length === 0) {
@@ -516,7 +516,7 @@ app.post("/api/outfits/analyse", async (req: Request, res: Response) => {
 });
 
 // Outfit recommendations generation endpoint
-app.post("/api/outfits/recommend", async (req: Request, res: Response) => {
+app.post(["/api/outfits/recommend", "/outfits/recommend"], async (req: Request, res: Response) => {
   try {
     const { tops, bottoms, soles, mode } = req.body;
     if (!Array.isArray(tops) || tops.length === 0 || !Array.isArray(bottoms) || bottoms.length === 0) {
@@ -652,7 +652,7 @@ app.post("/api/outfits/recommend", async (req: Request, res: Response) => {
 });
 
 // Internet image search endpoint
-app.post("/api/outfits/similar-images", async (req: Request, res: Response) => {
+app.post(["/api/outfits/similar-images", "/outfits/similar-images"], async (req: Request, res: Response) => {
   try {
     const { style, colors, top, bottom, sole, query } = req.body;
     const pinterestToken = req.cookies?.pinterest_token || process.env.PINTEREST_ACCESS_TOKEN;
@@ -676,7 +676,7 @@ app.post("/api/outfits/similar-images", async (req: Request, res: Response) => {
 });
 
 // Live Web Fashion Search endpoint with fashion-only guardrails
-app.get("/api/fashion/search", async (req: Request, res: Response) => {
+app.get(["/api/fashion/search", "/fashion/search"], async (req: Request, res: Response) => {
   try {
     const q = ((req.query.q as string) || "").trim();
     const category = (req.query.category as any) || "all";
@@ -701,7 +701,7 @@ app.get("/api/fashion/search", async (req: Request, res: Response) => {
 });
 
 // Proxy image endpoint to prevent CORS blocks when downloading web images to upload slots
-app.get("/api/fashion/proxy-image", async (req: Request, res: Response) => {
+app.get(["/api/fashion/proxy-image", "/fashion/proxy-image"], async (req: Request, res: Response) => {
   const imageUrl = req.query.url as string;
   if (!imageUrl || (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
     res.status(400).send("Invalid or missing image URL");
@@ -736,7 +736,7 @@ app.get("/api/fashion/proxy-image", async (req: Request, res: Response) => {
 });
 
 // Config status endpoint
-app.get("/api/outfits/config-status", (req: Request, res: Response) => {
+app.get(["/api/outfits/config-status", "/outfits/config-status"], (req: Request, res: Response) => {
   const hasGemini = Boolean(process.env.GEMINI_API_KEY);
   const hasGoogleSearch = Boolean(
     process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX
@@ -806,6 +806,10 @@ app.get("/privacy", (_req: Request, res: Response) => {
 
 // Server-side Vite mounting / Static files serving
 async function startServer() {
+  if (process.env.VERCEL) {
+    return;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -832,3 +836,5 @@ startServer().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);
 });
+
+export default app;

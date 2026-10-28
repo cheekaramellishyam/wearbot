@@ -86,15 +86,11 @@ export function ProfileDialog({
                 <DialogTitle className="text-lg font-bold">
                   {user ? "Google Account" : "Sign in to WearBot"}
                 </DialogTitle>
-                {user ? (
-                  <DialogDescription className="text-xs text-muted-foreground">
-                    Connected with your Google profile
-                  </DialogDescription>
-                ) : (
-                  <DialogDescription className="sr-only">
-                    Google account sign-in
-                  </DialogDescription>
-                )}
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {user
+                    ? "Connected with your Google profile"
+                    : "Sign in with Google to sync your wardrobe and save outfits across sessions."}
+                </DialogDescription>
               </div>
             </div>
           </DialogHeader>
@@ -177,13 +173,25 @@ export function ProfileDialog({
           </div>
         ) : (
           /* Signed Out State */
-          <div className="mt-3 flex flex-col items-center gap-4 py-2">
+          <div className="mt-4 flex flex-col items-center gap-3 py-1">
+            {/* Benefits summary list */}
+            <div className="w-full rounded-lg border border-line/60 bg-muted/20 p-3 text-xs text-muted-foreground space-y-1.5">
+              <div className="flex items-center gap-2 text-foreground font-medium">
+                <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>Auto-save your uploaded tops, bottoms & soles</span>
+              </div>
+              <div className="flex items-center gap-2 text-foreground font-medium">
+                <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>Personalized AI outfit recommendations & history</span>
+              </div>
+            </div>
+
             {/* Official Google Material Sign-In Button */}
             <button
               type="button"
               onClick={handleSignIn}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 rounded-lg border border-line bg-card py-3 px-4 text-xs font-semibold text-foreground hover:bg-accent/60 transition-all shadow-xs cursor-pointer active:scale-[0.99] disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 rounded-lg border border-line bg-card py-3 px-4 text-xs font-semibold text-foreground hover:bg-accent/60 transition-all shadow-xs cursor-pointer active:scale-[0.99] disabled:opacity-50 mt-1"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -212,6 +220,15 @@ export function ProfileDialog({
                 </svg>
               )}
               <span>{loading ? "Connecting to Google…" : "Sign in with Google"}</span>
+            </button>
+
+            {/* Skip / Continue as guest button */}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 py-1 transition-colors cursor-pointer"
+            >
+              Continue without signing in
             </button>
           </div>
         )}

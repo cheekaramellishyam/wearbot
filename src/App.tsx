@@ -28,6 +28,7 @@ import {
   removeOutfitFromStorage,
   saveOutfitToStorage,
 } from "@/lib/wardrobe";
+import { generateClientQuickShuffle } from "@/lib/quick-shuffle";
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -81,9 +82,24 @@ export default function App() {
   const [aiLimits, setAiLimits] = useState<AiLimitState>(() => getAiLimitState());
 
   useEffect(() => {
+    let initialAuthResolved = false;
     const unsubscribe = subscribeToAuth((user) => {
       setGoogleUser(user);
       setAiLimits(getAiLimitState(user?.email || user?.uid));
+
+      // Ask to sign in with Google on first open when user is not logged in
+      if (!initialAuthResolved) {
+        initialAuthResolved = true;
+        if (!user) {
+          const hasPrompted = sessionStorage.getItem("wearbot_first_visit_prompted");
+          if (!hasPrompted) {
+            sessionStorage.setItem("wearbot_first_visit_prompted", "true");
+            setTimeout(() => {
+              setProfileOpen(true);
+            }, 450);
+          }
+        }
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -237,26 +253,23 @@ export default function App() {
         Promise.all(shoes.map(fileToDataUrl)),
       ]);
 
-      let topsAnalysis: ClothingAnalysis[];
-      let bottomsAnalysis: ClothingAnalysis[];
-      let solesAnalysis: ClothingAnalysis[];
 
+      // 1. FAST CLIENT-SIDE QUICK SHUFFLE
       if (mode === "basic") {
-        // Fast instant analysis without hitting Gemini
-        const fallbackAnalysis: ClothingAnalysis = {
-          type: "garment",
-          primaryColor: "neutral",
-          secondaryColors: [],
-          pattern: "solid",
-          style: "casual",
-          fabric: "cotton",
-          aesthetic: "minimal",
-        };
-        topsAnalysis = tops.map((u) => cache.current.get(u) || fallbackAnalysis);
-        bottomsAnalysis = bottoms.map((u) => cache.current.get(u) || fallbackAnalysis);
-        solesAnalysis = soles.map((u) => cache.current.get(u) || fallbackAnalysis);
-      } else {
-        // Only send photos that haven't been analysed before to AI
+        const quickCombos = generateClientQuickShuffle(tops.length, bottoms.length, soles.length);
+        setPreviews({ tops, bottoms, soles });
+        setRecs(quickCombos);
+        toast.success(`Quick Shuffle: ${quickCombos.length} outfit combinations ready!`);
+        setLoading(false);
+        return;
+      }
+
+      // 2. AI STYLIST MODE
+      let topsAnalysis: ClothingAnalysis[] = [];
+      let bottomsAnalysis: ClothingAnalysis[] = [];
+      let solesAnalysis: ClothingAnalysis[] = [];
+
+      try {
         const fresh = [
           ...new Set([...tops, ...bottoms, ...soles].filter((u) => !cache.current.has(u))),
         ];
@@ -268,49 +281,61 @@ export default function App() {
             body: JSON.stringify({ images: fresh }),
           });
 
-          if (!analyseRes.ok) {
-            const errData = await analyseRes.json().catch(() => ({}));
-            throw new Error(errData.error || "Failed to analyse clothing photos.");
+          if (analyseRes.ok) {
+            const { items } = (await analyseRes.json()) as { items: ClothingAnalysis[] };
+            fresh.forEach((u, i) => cache.current.set(u, items[i]!));
           }
-
-          const { items } = (await analyseRes.json()) as { items: ClothingAnalysis[] };
-          fresh.forEach((u, i) => cache.current.set(u, items[i]!));
         }
 
-        topsAnalysis = tops.map((u) => cache.current.get(u)!);
-        bottomsAnalysis = bottoms.map((u) => cache.current.get(u)!);
-        solesAnalysis = soles.map((u) => cache.current.get(u)!);
+        const fallbackItem = (type: string, color: string): ClothingAnalysis => ({
+          type,
+          primaryColor: color,
+          secondaryColors: [],
+          pattern: "solid",
+          style: "smart casual",
+          fabric: "cotton",
+          aesthetic: "minimal",
+        });
+
+        topsAnalysis = tops.map((u) => cache.current.get(u) || fallbackItem("shirt", "neutral"));
+        bottomsAnalysis = bottoms.map((u) => cache.current.get(u) || fallbackItem("pants", "neutral"));
+        solesAnalysis = soles.map((u) => cache.current.get(u) || fallbackItem("shoes", "white"));
+
+        const recommendRes = await fetch("/api/outfits/recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tops: topsAnalysis,
+            bottoms: bottomsAnalysis,
+            soles: solesAnalysis,
+            mode,
+          }),
+        });
+
+        if (recommendRes.ok) {
+          const { recommendations } = (await recommendRes.json()) as {
+            recommendations: OutfitRecommendation[];
+          };
+          if (recommendations && recommendations.length > 0) {
+            setPreviews({ tops, bottoms, soles });
+            setRecs(recommendations);
+            toast.success(
+              `Generated ${recommendations.length} AI outfit recommendation${
+                recommendations.length > 1 ? "s" : ""
+              }!`
+            );
+            return;
+          }
+        }
+      } catch (aiErr) {
+        console.warn("AI generation failed or server unreachable, falling back to Quick Shuffle:", aiErr);
       }
 
-      const recommendRes = await fetch("/api/outfits/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tops: topsAnalysis,
-          bottoms: bottomsAnalysis,
-          soles: solesAnalysis,
-          mode,
-        }),
-      });
-
-      if (!recommendRes.ok) {
-        const errData = await recommendRes.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to generate recommendations.");
-      }
-
-      const { recommendations } = (await recommendRes.json()) as {
-        recommendations: OutfitRecommendation[];
-      };
-
+      // 3. Graceful fallback to Quick Shuffle if AI service was unreachable
+      const fallbackCombos = generateClientQuickShuffle(tops.length, bottoms.length, soles.length);
       setPreviews({ tops, bottoms, soles });
-      setRecs(recommendations);
-      toast.success(
-        mode === "basic"
-          ? `Generated ${recommendations.length} basic combinations!`
-          : `Generated ${recommendations.length} AI outfit recommendation${
-              recommendations.length > 1 ? "s" : ""
-            }!`
-      );
+      setRecs(fallbackCombos);
+      toast.info("Generated Quick Shuffle combinations (AI server unreachable or cold start).");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Something went wrong — please try again."
