@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { ClothingAnalysis, OutfitRecommendation } from "./src/lib/types";
+import { searchFashionImagesOnWeb } from "./server/fashion-web-search";
 
 dotenv.config();
 
@@ -599,7 +600,6 @@ app.get(["/api/fashion/search", "/fashion/search"], async (req: Request, res: Re
       return;
     }
 
-    const { searchFashionImagesOnWeb } = await import("./server/fashion-web-search");
     const response = await searchFashionImagesOnWeb(q, category);
     res.json(response);
   } catch (error: any) {

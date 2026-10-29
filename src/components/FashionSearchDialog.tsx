@@ -6,6 +6,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Sparkles,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,20 +38,34 @@ interface FashionSearchDialogProps {
   onSelectGarment?: (file: File, category: "tops" | "bottoms" | "soles") => void;
 }
 
+const POPULAR_SEARCHES = [
+  "Bootcut Jeans",
+  "Oversized Black Tee",
+  "Cargo Pants",
+  "Linen Shirt",
+  "Chelsea Boots",
+  "Leather Biker Jacket",
+  "Retro Sneakers",
+  "Cable Knit Sweater",
+  "Wide Leg Trousers",
+  "Penny Loafers",
+];
+
 export function FashionSearchDialog({
   open,
   onOpenChange,
   onSelectGarment,
 }: FashionSearchDialogProps) {
   const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<"all" | "tops" | "bottoms" | "soles">("all");
   const [webResults, setWebResults] = useState<WebFashionItem[]>([]);
   const [loadingWeb, setLoadingWeb] = useState(false);
   const [nonFashionError, setNonFashionError] = useState<string | null>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
   const searchTimeoutRef = useRef<any>(null);
 
-  // Search the web whenever query changes
-  const performWebSearch = async (searchTerm: string) => {
+  // Search the web whenever query or category changes
+  const performWebSearch = async (searchTerm: string, categoryFilter: "all" | "tops" | "bottoms" | "soles" = selectedCategory) => {
     const trimmed = searchTerm.trim();
     if (!trimmed) {
       setWebResults([]);
@@ -63,7 +78,7 @@ export function FashionSearchDialog({
     setNonFashionError(null);
 
     try {
-      const url = `/api/fashion/search?q=${encodeURIComponent(trimmed)}&category=all`;
+      const url = `/api/fashion/search?q=${encodeURIComponent(trimmed)}&category=${categoryFilter}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -79,14 +94,36 @@ export function FashionSearchDialog({
 
         if (data.results && data.results.length > 0) {
           setNonFashionError(null);
-          setWebResults(data.results);
+          // If less than 15 results, supplement with local high-res catalog items
+          let finalResults = data.results;
+          if (finalResults.length < 18) {
+            const localMatches = searchLocalFashionCatalog(trimmed, categoryFilter);
+            const seen = new Set(finalResults.map((r: WebFashionItem) => r.imageUrl));
+            for (const item of localMatches) {
+              if (!seen.has(item.imageUrl)) {
+                finalResults.push({
+                  id: item.id,
+                  title: item.title,
+                  imageUrl: item.imageUrl,
+                  thumbUrl: item.imageUrl,
+                  sourceUrl: item.sourceUrl,
+                  category: item.category,
+                  subCategory: item.subCategory,
+                  color: item.color,
+                  style: item.style,
+                });
+                seen.add(item.imageUrl);
+              }
+            }
+          }
+          setWebResults(finalResults);
           setLoadingWeb(false);
           return;
         }
       }
 
       // If network returns empty or non-200, seamlessly match curated fashion items
-      const localMatches = searchLocalFashionCatalog(trimmed, "all");
+      const localMatches = searchLocalFashionCatalog(trimmed, categoryFilter);
       if (localMatches.length > 0) {
         setNonFashionError(null);
         setWebResults(
@@ -107,7 +144,7 @@ export function FashionSearchDialog({
       }
     } catch (err: any) {
       console.warn("Fashion web search API failed, falling back to catalog:", err);
-      const localMatches = searchLocalFashionCatalog(trimmed, "all");
+      const localMatches = searchLocalFashionCatalog(trimmed, categoryFilter);
       if (localMatches.length > 0) {
         setNonFashionError(null);
         setWebResults(
@@ -146,19 +183,25 @@ export function FashionSearchDialog({
     }
 
     searchTimeoutRef.current = setTimeout(() => {
-      performWebSearch(query);
-    }, 400);
+      performWebSearch(query, selectedCategory);
+    }, 350);
 
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  }, [query, open]);
+  }, [query, selectedCategory, open]);
 
-  // Strictly return web results when searched; NO images displayed before searching
+  // Display items filtered by category
   const displayItems = useMemo(() => {
     if (!query.trim()) return [];
-    return webResults;
-  }, [query, webResults]);
+    if (selectedCategory === "all") return webResults;
+    return webResults.filter((item) => item.category === selectedCategory);
+  }, [query, webResults, selectedCategory]);
+
+  const handleSelectSearchTerm = (term: string) => {
+    setQuery(term);
+    performWebSearch(term, selectedCategory);
+  };
 
   const handleAddGarment = async (item: WebFashionItem) => {
     if (!onSelectGarment) return;
@@ -174,6 +217,7 @@ export function FashionSearchDialog({
         const blob = await res.blob();
         const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
         onSelectGarment(file, item.category);
+        toast.success(`Added to ${item.category.toUpperCase()}`);
         setLoadingItemId(null);
         return;
       }
@@ -186,6 +230,7 @@ export function FashionSearchDialog({
         const blob = await directRes.blob();
         const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
         onSelectGarment(file, item.category);
+        toast.success(`Added to ${item.category.toUpperCase()}`);
         setLoadingItemId(null);
         return;
       }
@@ -216,6 +261,7 @@ export function FashionSearchDialog({
       });
 
       onSelectGarment(file, item.category);
+      toast.success(`Added to ${item.category.toUpperCase()}`);
     } catch (err) {
       console.error(err);
       toast.error("Failed to load garment. Please try another image or drag & drop.");
@@ -226,14 +272,14 @@ export function FashionSearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-[95vw] h-[88vh] max-h-[88vh] flex flex-col p-4 sm:p-6 overflow-hidden bg-background">
+      <DialogContent className="max-w-4xl w-[95vw] h-[90vh] max-h-[90vh] flex flex-col p-4 sm:p-6 overflow-hidden bg-background">
         {/* Abstract wave ribbon background matching reference inner box */}
         <WaveBackground className="absolute inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.75} />
 
         {/* Search Header */}
         <DialogHeader className="border-b border-line pb-4 relative z-10">
           <div className="flex items-center justify-between pr-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Globe className="h-5 w-5" />
               </div>
@@ -241,16 +287,16 @@ export function FashionSearchDialog({
                 <DialogTitle className="text-xl font-bold tracking-tight">
                   Live Fashion Web Search
                 </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Search fashion garments from the web
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Search live web fashion photos to add garments directly to your wardrobe slots
                 </DialogDescription>
               </div>
             </div>
 
             {loadingWeb && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-full border border-line">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                <span>Searching web…</span>
+                <span className="font-medium">Searching web…</span>
               </div>
             )}
           </div>
@@ -264,10 +310,10 @@ export function FashionSearchDialog({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  performWebSearch(query);
+                  performWebSearch(query, selectedCategory);
                 }
               }}
-              placeholder="Search fashion garments (e.g. brown leather jacket, linen trousers, samba sneakers)..."
+              placeholder="Search fashion garments (e.g. bootcut jeans, oversized tee, cargo pants, chelsea boots)..."
               className="w-full rounded-lg border border-line bg-muted/40 py-2.5 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground focus:bg-background focus:outline-hidden transition-all shadow-2xs"
               autoFocus
             />
@@ -285,6 +331,54 @@ export function FashionSearchDialog({
                 <X className="h-4 w-4" />
               </button>
             )}
+          </div>
+
+          {/* Category Tabs & Quick Suggestions */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-1">
+            {/* Category Filter Buttons */}
+            <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-line text-xs font-medium">
+              {(["all", "tops", "bottoms", "soles"] as const).map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1 rounded-md transition-all capitalize cursor-pointer ${
+                    selectedCategory === cat
+                      ? "bg-background text-foreground font-semibold shadow-2xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {cat === "all" ? "All Categories" : cat}
+                </button>
+              ))}
+            </div>
+
+            {displayItems.length > 0 && (
+              <div className="text-xs text-muted-foreground font-medium">
+                {displayItems.length} items found
+              </div>
+            )}
+          </div>
+
+          {/* Quick Style Search Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto py-1 mt-2 no-scrollbar text-xs">
+            <span className="text-muted-foreground text-[11px] font-medium flex items-center gap-1 shrink-0">
+              <Sparkles className="h-3 w-3 text-primary" /> Popular:
+            </span>
+            {POPULAR_SEARCHES.map((term) => (
+              <button
+                key={term}
+                type="button"
+                onClick={() => handleSelectSearchTerm(term)}
+                className={`shrink-0 rounded-full border px-2.5 py-0.5 transition-colors cursor-pointer ${
+                  query.toLowerCase() === term.toLowerCase()
+                    ? "bg-foreground text-background border-foreground font-semibold"
+                    : "bg-muted/30 border-line text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                }`}
+              >
+                {term}
+              </button>
+            ))}
           </div>
         </DialogHeader>
 
@@ -306,19 +400,31 @@ export function FashionSearchDialog({
               <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
               <h3 className="text-sm font-semibold">Browsing the web for "{query}"…</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Retrieving real fashion photos and styling inspiration.
+                Retrieving dozens of real live fashion photos and styling options.
               </p>
             </div>
           ) : !query.trim() ? (
-            /* Clean Empty State when dialog opens: NO pre-loaded images */
-            <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted border border-line mb-3">
-                <Search className="h-5 w-5 text-muted-foreground" />
+            /* Clean Initial State with Popular Suggestions */
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted border border-line mb-3">
+                <Search className="h-6 w-6 text-muted-foreground" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Search for Fashion Items</h3>
-              <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-                Type above to find clothing items and footwear to add to your outfit combinations.
+              <h3 className="text-base font-bold text-foreground">Explore Live Web Fashion</h3>
+              <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+                Type above or tap any popular style chip like <b>Bootcut Jeans</b> or <b>Chelsea Boots</b> to view dozens of live web photos.
               </p>
+              <div className="flex flex-wrap justify-center gap-2 mt-5 max-w-md">
+                {POPULAR_SEARCHES.slice(0, 6).map((term) => (
+                  <button
+                    key={term}
+                    type="button"
+                    onClick={() => handleSelectSearchTerm(term)}
+                    className="rounded-full bg-card border border-line px-3 py-1 text-xs font-medium text-foreground hover:border-foreground transition-all cursor-pointer shadow-2xs"
+                  >
+                    + {term}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : displayItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -327,11 +433,11 @@ export function FashionSearchDialog({
               </div>
               <h3 className="text-base font-semibold">No fashion results for "{query}"</h3>
               <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-                Try searching for specific garments, colors, or styles (e.g. "oversized black tee", "navy chinos", "leather loafers").
+                Try searching for specific garments, colors, or styles (e.g. "bootcut jeans", "oversized tee", "chinos", "sneakers").
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
               {displayItems.map((item: WebFashionItem) => {
                 const isLoading = loadingItemId === item.id;
                 const buttonLabel =
