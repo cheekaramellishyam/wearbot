@@ -3,18 +3,18 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api/$1"
     },
     {
       "source": "/auth/(.*)",
-      "destination": "/api"
+      "destination": "/api/auth/$1"
     },
     {
       "source": "/privacy",
-      "destination": "/api"
+      "destination": "/api/privacy"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/|auth/|privacy).*)",
       "destination": "/index.html"
     }
   ]
