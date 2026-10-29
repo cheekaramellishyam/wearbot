@@ -150,7 +150,7 @@ export function ProfileDialog({
               <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
               <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                 <ShieldCheck className="h-3 w-3" />
-                <span>Signed in as {user.initials}</span>
+                <span>Cloud Sync Active (Permanent Wardrobe & Attire Backup)</span>
               </div>
             </div>
 

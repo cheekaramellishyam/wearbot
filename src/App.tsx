@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UploadBox } from "@/components/UploadBox";
 import { WardrobeDialog } from "@/components/WardrobeDialog";
-import { FashionSearchDialog } from "@/components/FashionSearchDialog";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import { GenerationModeDialog } from "@/components/GenerationModeDialog";
 import { RefreshConfirmDialog } from "@/components/RefreshConfirmDialog";
@@ -21,6 +20,8 @@ import {
   isOutfitAlreadySaved,
   removeOutfitFromStorage,
   saveOutfitToStorage,
+  setCurrentUserForSync,
+  syncWardrobeWithCloud,
 } from "@/lib/wardrobe";
 import { generateClientQuickShuffle } from "@/lib/quick-shuffle";
 
@@ -106,9 +107,6 @@ export default function App() {
   const [galleryCount, setGalleryCount] = useState(0);
   const [savedMap, setSavedMap] = useState<Record<number, string | null>>({});
 
-  // Search Dialog state
-  const [searchOpen, setSearchOpen] = useState(false);
-
   // Google Profile state
   const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -131,6 +129,13 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToAuth((user) => {
       setGoogleUser(user);
+      if (user?.uid) {
+        syncWardrobeWithCloud(user.uid).then(() => {
+          refreshWardrobeData();
+        });
+      } else {
+        setCurrentUserForSync(null);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -173,20 +178,30 @@ export default function App() {
     return () => window.removeEventListener("wardrobe_updated", handler);
   }, [googleUser, recs, previews]);
 
-  // Auto-save uploaded garments to Gallery
+  // Auto-save uploaded garments to Gallery (skipping items loaded from Gallery)
   useEffect(() => {
     const autoSave = async () => {
       try {
         const itemsToSave: Array<{ dataUrl: string; category: ClothingCategory; name?: string }> = [];
+
+        const isFromGallery = (f: File) =>
+          (f as any).isFromGallery ||
+          (f as any).galleryId ||
+          f.name.startsWith("gallery-") ||
+          f.name.includes("-gallery-");
+
         for (const file of shirt) {
+          if (isFromGallery(file)) continue;
           const url = await fileToDataUrl(file);
           itemsToSave.push({ dataUrl: url, category: "Top", name: file.name });
         }
         for (const file of pants) {
+          if (isFromGallery(file)) continue;
           const url = await fileToDataUrl(file);
           itemsToSave.push({ dataUrl: url, category: "Bottom", name: file.name });
         }
         for (const file of shoes) {
+          if (isFromGallery(file)) continue;
           const url = await fileToDataUrl(file);
           itemsToSave.push({ dataUrl: url, category: "Sole", name: file.name });
         }
@@ -380,26 +395,36 @@ export default function App() {
     }
   };
 
-  const handleAddGarmentFromSearch = (file: File, category: "tops" | "bottoms" | "soles") => {
+  const handleAddGarmentToSlot = (file: File, category: "tops" | "bottoms" | "soles") => {
+    const galleryId = (file as any).galleryId;
+    const isSameFile = (existing: File) =>
+      (galleryId && (existing as any).galleryId === galleryId) ||
+      existing.name === file.name;
+
     if (category === "tops") {
-      setShirt((prev) => [...prev, file]);
+      setShirt((prev) => (prev.some(isSameFile) ? prev : [...prev, file]));
       toast.success("Added top garment to wardrobe.");
     } else if (category === "bottoms") {
-      setPants((prev) => [...prev, file]);
+      setPants((prev) => (prev.some(isSameFile) ? prev : [...prev, file]));
       toast.success("Added bottom garment to wardrobe.");
     } else if (category === "soles") {
-      setShoes((prev) => [...prev, file]);
+      setShoes((prev) => (prev.some(isSameFile) ? prev : [...prev, file]));
       toast.success("Added sole/footwear to wardrobe.");
     }
   };
 
   const handleRemoveGarment = (identifier: string, category: "tops" | "bottoms" | "soles") => {
+    const isMatch = (f: File) =>
+      (f as any).galleryId === identifier ||
+      f.name === identifier ||
+      f.name.includes(identifier);
+
     if (category === "tops") {
-      setShirt((prev) => prev.filter((f) => f.name !== identifier));
+      setShirt((prev) => prev.filter((f) => !isMatch(f)));
     } else if (category === "bottoms") {
-      setPants((prev) => prev.filter((f) => f.name !== identifier));
+      setPants((prev) => prev.filter((f) => !isMatch(f)));
     } else if (category === "soles") {
-      setShoes((prev) => prev.filter((f) => f.name !== identifier));
+      setShoes((prev) => prev.filter((f) => !isMatch(f)));
     }
   };
 
@@ -439,12 +464,11 @@ export default function App() {
         }}
         onRefresh={handleRefresh}
         wardrobeCount={attireCount + galleryCount}
-        onOpenSearch={() => setSearchOpen(true)}
         googleUser={googleUser}
         onOpenProfile={() => setProfileOpen(true)}
       />
 
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-10 sm:px-6 md:py-16">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-10 sm:px-6 md:py-16 pb-28 sm:pb-36">
         {/* Upload Boxes: Tops | Bottoms | Soles */}
         <section className="flex w-full flex-col items-center gap-10 md:flex-row md:items-stretch md:justify-center md:gap-0">
           <div className="flex flex-1 justify-center md:pr-8">
@@ -642,16 +666,10 @@ export default function App() {
         open={wardrobeOpen}
         onOpenChange={setWardrobeOpen}
         defaultTab={wardrobeTab}
-        onSelectGarment={handleAddGarmentFromSearch}
+        onSelectGarment={handleAddGarmentToSlot}
         onRemoveGarment={handleRemoveGarment}
         uploadedFiles={{ tops: shirt, bottoms: pants, soles: shoes }}
         uploadedCount={shirt.length + pants.length + shoes.length}
-      />
-
-      <FashionSearchDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        onSelectGarment={handleAddGarmentFromSearch}
       />
 
       <ProfileDialog

@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { ClothingAnalysis, OutfitRecommendation } from "./src/lib/types";
-import { searchFashionImagesOnWeb } from "./server/fashion-web-search";
 
 dotenv.config();
 
@@ -588,65 +587,6 @@ app.post(["/api/outfits/recommend", "/outfits/recommend"], async (req: Request, 
 });
 
 
-
-// Live Web Fashion Search endpoint with fashion-only guardrails
-app.get(["/api/fashion/search", "/fashion/search"], async (req: Request, res: Response) => {
-  try {
-    const q = ((req.query.q as string) || "").trim();
-    const category = (req.query.category as any) || "all";
-
-    if (!q) {
-      res.json({ isFashion: true, query: "", results: [], total: 0 });
-      return;
-    }
-
-    const response = await searchFashionImagesOnWeb(q, category);
-    res.json(response);
-  } catch (error: any) {
-    console.error("Error in /api/fashion/search:", error);
-    res.status(500).json({
-      isFashion: true,
-      error: error?.message || "Failed to search for fashion items on the web.",
-      results: [],
-      total: 0,
-    });
-  }
-});
-
-// Proxy image endpoint to prevent CORS blocks when downloading web images to upload slots
-app.get(["/api/fashion/proxy-image", "/fashion/proxy-image"], async (req: Request, res: Response) => {
-  const imageUrl = req.query.url as string;
-  if (!imageUrl || (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
-    res.status(400).send("Invalid or missing image URL");
-    return;
-  }
-
-  try {
-    const fetchRes = await fetch(imageUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      },
-    });
-
-    if (!fetchRes.ok) {
-      res.status(fetchRes.status).send("Failed to fetch remote image");
-      return;
-    }
-
-    const contentType = fetchRes.headers.get("content-type") || "image/jpeg";
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-
-    const arrayBuffer = await fetchRes.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err: any) {
-    console.warn("Proxy image error:", err?.message);
-    res.status(500).send("Proxy fetch failed");
-  }
-});
 
 // Config status endpoint
 app.get(["/api/outfits/config-status", "/outfits/config-status"], (_req: Request, res: Response) => {

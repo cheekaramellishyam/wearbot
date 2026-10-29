@@ -178,7 +178,9 @@ export function WardrobeDialog({
     if (addedItemIds[item.id]) return true;
     const cat = item.category === "Top" ? "tops" : item.category === "Bottom" ? "bottoms" : "soles";
     if (uploadedFiles && uploadedFiles[cat]) {
-      return uploadedFiles[cat].some((f) => f.name.includes(item.id));
+      return uploadedFiles[cat].some(
+        (f) => (f as any).galleryId === item.id || f.name.includes(item.id)
+      );
     }
     return false;
   };
@@ -204,8 +206,10 @@ export function WardrobeDialog({
 
     if (!onSelectGarment) return;
     try {
-      const filename = `${item.category.toLowerCase()}-${item.id}.jpg`;
+      const filename = `gallery-${item.id}.jpg`;
       const file = await urlOrDataUrlToFile(item.imageUrl, filename);
+      (file as any).galleryId = item.id;
+      (file as any).isFromGallery = true;
       onSelectGarment(file, category);
       setAddedItemIds((prev) => ({ ...prev, [item.id]: true }));
       toast.success(`Added to ${targetLabel}`, { duration: 1400 });

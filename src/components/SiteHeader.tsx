@@ -1,4 +1,4 @@
-import { RotateCcw, Search, User } from "lucide-react";
+import { RotateCcw, User } from "lucide-react";
 import { WardrobeHangerLogo } from "@/components/WardrobeHangerLogo";
 import { GoogleUserProfile } from "@/lib/google-auth";
 
@@ -6,7 +6,6 @@ interface SiteHeaderProps {
   onOpenWardrobe?: () => void;
   onRefresh?: () => void;
   wardrobeCount?: number;
-  onOpenSearch?: () => void;
   googleUser?: GoogleUserProfile | null;
   onOpenProfile?: () => void;
 }
@@ -15,7 +14,6 @@ export function SiteHeader({
   onOpenWardrobe,
   onRefresh,
   wardrobeCount = 0,
-  onOpenSearch,
   googleUser,
   onOpenProfile,
 }: SiteHeaderProps) {
@@ -37,7 +35,7 @@ export function SiteHeader({
             </span>
           </button>
 
-          {/* Refresh button: sized like search icon (h-6 w-6) and moved to the right */}
+          {/* Refresh button (h-6 w-6) */}
           <button
             type="button"
             onClick={onRefresh}
@@ -72,15 +70,6 @@ export function SiteHeader({
 
         {/* Right header controls */}
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            aria-label="Search shirts, pants, and soles"
-            className="p-1.5 sm:p-2 text-foreground hover:opacity-75 transition-opacity cursor-pointer"
-            title="Browse & search shirts, pants, soles"
-          >
-            <Search className="h-6 w-6" strokeWidth={1.5} />
-          </button>
 
           {/* Profile Button with Google Account initials / avatar */}
           <button

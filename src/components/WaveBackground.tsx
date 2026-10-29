@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 
 interface WaveBackgroundProps {
   className?: string;
-  /** Controls overall opacity of the wave lines (default: 0.9) */
+  /** Controls overall opacity of the wave lines (default: 0.95) */
   intensity?: number;
   /** Height or position mode: "bottom" for anchoring to bottom, "cover" for covering whole container */
   mode?: "bottom" | "cover";
@@ -17,7 +17,11 @@ export function WaveBackground({
   showBgFill = false,
 }: WaveBackgroundProps) {
   // Pre-calculate the multi-ribbon spline paths
-  const { ribbon1, ribbon2, ribbon3 } = useMemo(() => {
+  const { ribbon1, ribbon2, ribbon3 } = useMemo<{
+    ribbon1: Array<{ d: string; opacity: number }>;
+    ribbon2: Array<{ d: string; opacity: number }>;
+    ribbon3: Array<{ d: string; opacity: number }>;
+  }>(() => {
     const width = 1440;
 
     // Ribbon 1: The undulating crest-and-trough wave (left arch, center dip, right arch)
@@ -48,41 +52,41 @@ export function WaveBackground({
     for (let i = 0; i < count2; i++) {
       const t = i / (count2 - 1);
       const y0 = 160 + t * 130;
-      const cp1x = 220 + t * 50;
-      const cp1y = 410 + t * 40;
-      const cp2x = 450 + t * 30;
-      const cp2y = 460 + t * 30;
-      const mx = 660 + t * 30;
-      const my = 430 + t * 35;
-      const cp3x = 880 - t * 40;
-      const cp3y = 380 + t * 50;
-      const cp4x = 1180 + t * 40;
-      const cp4y = 230 + t * 80;
-      const yEnd = 240 + t * 120;
+      const cp1x = 260 + t * 30;
+      const cp1y = 130 + t * 70;
+      const cp2x = 520 + t * 40;
+      const cp2y = 230 + t * 80;
+      const mx = 720 + t * 30;
+      const my = 350 + t * 60;
+      const cp3x = 920 + t * 40;
+      const cp3y = 440 + t * 40;
+      const cp4x = 1180 + t * 30;
+      const cp4y = 470 + t * 40;
+      const yEnd = 450 + t * 50;
       const d = `M 0 ${y0.toFixed(1)} C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${mx.toFixed(1)} ${my.toFixed(1)} C ${cp3x.toFixed(1)} ${cp3y.toFixed(1)}, ${cp4x.toFixed(1)} ${cp4y.toFixed(1)}, ${width} ${yEnd.toFixed(1)}`;
       const opacity = Number((0.12 + 0.22 * (1 - Math.abs(t - 0.5) * 1.4)).toFixed(3));
       r2.push({ d, opacity });
     }
 
-    // Ribbon 3: The flowing lower base mesh
-    const count3 = 20;
+    // Ribbon 3: The low horizon flowing ribbon
+    const count3 = 24;
     const r3: Array<{ d: string; opacity: number }> = [];
     for (let i = 0; i < count3; i++) {
       const t = i / (count3 - 1);
-      const y0 = 420 + t * 80;
-      const cp1x = 300 + t * 40;
-      const cp1y = 470 + t * 30;
-      const cp2x = 650 + t * 30;
-      const cp2y = 490 + t * 20;
-      const mx = 820 + t * 30;
-      const my = 460 + t * 25;
-      const cp3x = 1050 + t * 20;
-      const cp3y = 430 + t * 30;
-      const cp4x = 1260 + t * 30;
+      const y0 = 430 + t * 70;
+      const cp1x = 220 + t * 30;
+      const cp1y = 360 + t * 50;
+      const cp2x = 480 + t * 40;
+      const cp2y = 440 + t * 40;
+      const mx = 760 + t * 30;
+      const my = 400 + t * 50;
+      const cp3x = 1000 + t * 30;
+      const cp3y = 350 + t * 50;
+      const cp4x = 1240 + t * 30;
       const cp4y = 410 + t * 40;
-      const yEnd = 430 + t * 70;
+      const yEnd = 430 + t * 60;
       const d = `M 0 ${y0.toFixed(1)} C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${mx.toFixed(1)} ${my.toFixed(1)} C ${cp3x.toFixed(1)} ${cp3y.toFixed(1)}, ${cp4x.toFixed(1)} ${cp4y.toFixed(1)}, ${width} ${yEnd.toFixed(1)}`;
-      const opacity = Number((0.09 + 0.16 * (1 - Math.abs(t - 0.5) * 1.6)).toFixed(3));
+      const opacity = Number((0.10 + 0.18 * (1 - Math.abs(t - 0.5) * 1.3)).toFixed(3));
       r3.push({ d, opacity });
     }
 
@@ -99,28 +103,20 @@ export function WaveBackground({
       aria-hidden="true"
     >
       <svg
-        viewBox="0 0 1440 600"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 1440 500"
         preserveAspectRatio="none"
-        className="h-full w-full"
+        className="h-full w-full opacity-90 transition-opacity duration-300"
+        fill="none"
       >
         <defs>
-          {/* Subtle shading gradients for 3D depth between folds */}
-          <linearGradient id="wave-shade-left" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#222222" stopOpacity="0.06" />
-            <stop offset="60%" stopColor="#222222" stopOpacity="0.02" />
-            <stop offset="100%" stopColor="#222222" stopOpacity="0" />
+          <linearGradient id="waveShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#000000" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0.08" />
           </linearGradient>
-
-          <linearGradient id="wave-shade-center" x1="40%" y1="100%" x2="60%" y2="0%">
-            <stop offset="0%" stopColor="#1a1a1a" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#1a1a1a" stopOpacity="0" />
-          </linearGradient>
-
-          <linearGradient id="wave-shade-right" x1="100%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#222222" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="#222222" stopOpacity="0" />
+          <linearGradient id="waveHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.04" />
+            <stop offset="50%" stopColor="#ffffff" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
           </linearGradient>
         </defs>
 
@@ -130,19 +126,15 @@ export function WaveBackground({
 
         {/* Ambient shadow zones giving 3D depth to the ribbon folds */}
         <path
-          d="M 0 450 Q 240 280, 520 480 Q 700 560, 950 420 Q 1200 240, 1440 450 L 1440 600 L 0 600 Z"
-          fill="url(#wave-shade-center)"
+          d="M 0 350 Q 360 260 720 370 T 1440 330 L 1440 500 L 0 500 Z"
+          fill="url(#waveShadow)"
         />
         <path
-          d="M 0 350 C 220 200, 360 410, 520 470 L 520 600 L 0 600 Z"
-          fill="url(#wave-shade-left)"
-        />
-        <path
-          d="M 680 470 C 1040 220, 1260 260, 1440 450 L 1440 600 L 680 600 Z"
-          fill="url(#wave-shade-right)"
+          d="M 0 410 Q 420 340 840 430 T 1440 400 L 1440 500 L 0 500 Z"
+          fill="url(#waveShadow)"
         />
 
-        {/* Ribbon 3: Lower base flow */}
+        {/* Ribbon 3: Low horizon flowing ribbon */}
         <g stroke="#262626" strokeWidth="0.85">
           {ribbon3.map((item, idx) => (
             <path
@@ -153,7 +145,7 @@ export function WaveBackground({
           ))}
         </g>
 
-        {/* Ribbon 2: Sweeping diagonal crossing wave */}
+        {/* Ribbon 2: Sweeping diagonal crossing ribbon */}
         <g stroke="#2c2c2c" strokeWidth="0.95">
           {ribbon2.map((item, idx) => (
             <path
@@ -178,3 +170,5 @@ export function WaveBackground({
     </div>
   );
 }
+
+export const HangerBackground = WaveBackground;
