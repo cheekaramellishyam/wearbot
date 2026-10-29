@@ -1,11 +1,8 @@
 import { RotateCcw, Search, User } from "lucide-react";
-import { PinterestLogo } from "@/components/PinterestLogo";
 import { WardrobeHangerLogo } from "@/components/WardrobeHangerLogo";
 import { GoogleUserProfile } from "@/lib/google-auth";
 
 interface SiteHeaderProps {
-  onOpenPinterest?: () => void;
-  isPinterestConnected?: boolean;
   onOpenWardrobe?: () => void;
   onRefresh?: () => void;
   wardrobeCount?: number;
@@ -15,8 +12,6 @@ interface SiteHeaderProps {
 }
 
 export function SiteHeader({
-  onOpenPinterest,
-  isPinterestConnected,
   onOpenWardrobe,
   onRefresh,
   wardrobeCount = 0,
@@ -37,11 +32,9 @@ export function SiteHeader({
             title="Open Wardrobe"
           >
             <WardrobeHangerLogo className="h-5 sm:h-6 md:h-7 w-auto" />
-            {wardrobeCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-pinterest text-[10px] font-bold text-white shadow-xs">
-                {wardrobeCount}
-              </span>
-            )}
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow-xs">
+              {wardrobeCount}
+            </span>
           </button>
 
           {/* Refresh button: sized like search icon (h-6 w-6) and moved to the right */}
@@ -79,23 +72,6 @@ export function SiteHeader({
 
         {/* Right header controls */}
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          <button
-            type="button"
-            onClick={onOpenPinterest}
-            aria-label="Pinterest access"
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
-              isPinterestConnected
-                ? "border-pinterest/30 bg-pinterest/10 text-pinterest"
-                : "border-line hover:border-pinterest hover:text-pinterest"
-            }`}
-            title="Pinterest Access & Settings"
-          >
-            <PinterestLogo className="h-3.5 w-3.5 text-pinterest" />
-            <span className="hidden sm:inline">
-              {isPinterestConnected ? "Pinterest Connected" : "Pinterest Access"}
-            </span>
-          </button>
-
           <button
             type="button"
             onClick={onOpenSearch}

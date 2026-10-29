@@ -1,3 +1,5 @@
+import { searchLocalFashionCatalog } from "../src/components/FashionSearchCatalog";
+
 export interface WebFashionItem {
   id: string;
   title: string;
@@ -189,7 +191,7 @@ export async function searchFashionImagesOnWeb(
             thumbUrl: json.turl || imgUrl,
             sourceUrl:
               json.purl ||
-              `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`,
+              `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`,
             category: itemCat,
           });
 
@@ -197,6 +199,29 @@ export async function searchFashionImagesOnWeb(
         }
       } catch (e) {
         // Continue to next match
+      }
+    }
+
+    if (results.length === 0) {
+      const localMatches = searchLocalFashionCatalog(query, categoryFilter);
+      if (localMatches.length > 0) {
+        return {
+          isFashion: true,
+          query,
+          enhancedQuery,
+          results: localMatches.map((item) => ({
+            id: item.id,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            thumbUrl: item.imageUrl,
+            sourceUrl: item.sourceUrl,
+            category: item.category,
+            subCategory: item.subCategory,
+            color: item.color,
+            style: item.style,
+          })),
+          total: localMatches.length,
+        };
       }
     }
 
@@ -209,6 +234,27 @@ export async function searchFashionImagesOnWeb(
     };
   } catch (err: any) {
     console.error("Error searching web fashion images:", err);
+    const localMatches = searchLocalFashionCatalog(query, categoryFilter);
+    if (localMatches.length > 0) {
+      return {
+        isFashion: true,
+        query,
+        enhancedQuery,
+        results: localMatches.map((item) => ({
+          id: item.id,
+          title: item.title,
+          imageUrl: item.imageUrl,
+          thumbUrl: item.imageUrl,
+          sourceUrl: item.sourceUrl,
+          category: item.category,
+          subCategory: item.subCategory,
+          color: item.color,
+          style: item.style,
+        })),
+        total: localMatches.length,
+      };
+    }
+
     return {
       isFashion: true,
       query,
@@ -219,3 +265,4 @@ export async function searchFashionImagesOnWeb(
     };
   }
 }
+

@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, ExternalLink, Images, Info, Loader2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, Images } from "lucide-react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UploadBox } from "@/components/UploadBox";
-import { PinterestLogo } from "@/components/PinterestLogo";
-import { PinterestConnectDialog } from "@/components/PinterestConnectDialog";
 import { WardrobeDialog } from "@/components/WardrobeDialog";
 import { FashionSearchDialog } from "@/components/FashionSearchDialog";
 import { ProfileDialog } from "@/components/ProfileDialog";
@@ -14,14 +12,10 @@ import { WaveBackground } from "@/components/WaveBackground";
 import { Toaster } from "@/components/ui/sonner";
 import { subscribeToAuth, GoogleUserProfile } from "@/lib/google-auth";
 import { getAiLimitState, recordAiGeneration, AiLimitState } from "@/lib/ai-limits";
-import {
-  ClothingAnalysis,
-  OutfitRecommendation,
-  SimilarImageResult,
-  SimilarImagesResponse,
-} from "@/lib/types";
+import { ClothingAnalysis, OutfitRecommendation } from "@/lib/types";
 import {
   autoSaveToGallery,
+  ClothingCategory,
   getGalleryItems,
   getSavedOutfits,
   isOutfitAlreadySaved,
@@ -32,10 +26,60 @@ import { generateClientQuickShuffle } from "@/lib/quick-shuffle";
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error(`Couldn't read ${file.name}`));
-    reader.readAsDataURL(file);
+    // If not an image or is SVG, use standard FileReader
+    if (!file.type.startsWith("image/") || file.type.includes("svg")) {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error(`Couldn't read ${file.name}`));
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_DIM = 960;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error(`Couldn't read ${file.name}`));
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      // High-quality JPEG compression: reduces a 5MB phone photo down to ~75KB while maintaining sharp clothing texture
+      const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      resolve(compressedDataUrl);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error(`Couldn't read ${file.name}`));
+      reader.readAsDataURL(file);
+    };
+
+    img.src = objectUrl;
   });
 }
 
@@ -54,20 +98,13 @@ export default function App() {
     bottoms: [],
     soles: [],
   });
-  const [shown, setShown] = useState<Record<number, boolean>>({});
-  const [similarImages, setSimilarImages] = useState<Record<number, SimilarImageResult[]>>({});
-  const [similarLoading, setSimilarLoading] = useState<Record<number, boolean>>({});
-  const [providerInfo, setProviderInfo] = useState<Record<number, string>>({});
-  const [configNote, setConfigNote] = useState<string | null>(null);
-  const [pinterestDialogOpen, setPinterestDialogOpen] = useState(false);
-  const [isPinterestConnected, setIsPinterestConnected] = useState(false);
 
   // Wardrobe state
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [wardrobeTab, setWardrobeTab] = useState<"attire" | "gallery">("attire");
   const [attireCount, setAttireCount] = useState(0);
   const [galleryCount, setGalleryCount] = useState(0);
-  const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
+  const [savedMap, setSavedMap] = useState<Record<number, string | null>>({});
 
   // Search Dialog state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -78,72 +115,47 @@ export default function App() {
 
   // Generation Mode Dialog and AI Quota state
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false);
-  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
-  const [aiLimits, setAiLimits] = useState<AiLimitState>(() => getAiLimitState());
+  const [aiLimits, setAiLimits] = useState<AiLimitState>({
+    used: 0,
+    total: 20,
+    date: "",
+  });
 
+  // Refresh confirmation modal state
+  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
+
+  const results = useRef<HTMLDivElement>(null);
+  const cache = useRef<Map<string, ClothingAnalysis>>(new Map());
+
+  // Subscribe to Google Firebase Auth state
   useEffect(() => {
-    let initialAuthResolved = false;
     const unsubscribe = subscribeToAuth((user) => {
       setGoogleUser(user);
-      setAiLimits(getAiLimitState(user?.email || user?.uid));
-
-      // Ask to sign in with Google on first open when user is not logged in
-      if (!initialAuthResolved) {
-        initialAuthResolved = true;
-        if (!user) {
-          const hasPrompted = sessionStorage.getItem("wearbot_first_visit_prompted");
-          if (!hasPrompted) {
-            sessionStorage.setItem("wearbot_first_visit_prompted", "true");
-            setTimeout(() => {
-              setProfileOpen(true);
-            }, 450);
-          }
-        }
-      }
     });
     return () => unsubscribe();
   }, []);
 
-  const handleAddGarmentFromSearch = (file: File, category: "tops" | "bottoms" | "soles") => {
-    if (category === "tops") {
-      setShirt((prev) => (prev.length < 7 ? [...prev, file] : prev));
-    } else if (category === "bottoms") {
-      setPants((prev) => (prev.length < 7 ? [...prev, file] : prev));
-    } else if (category === "soles") {
-      setShoes((prev) => (prev.length < 7 ? [...prev, file] : prev));
-    }
-    setRecs(null);
-  };
+  // Sync AI Limits whenever dialog opens or Google user changes
+  useEffect(() => {
+    const userKey = googleUser?.email || googleUser?.uid;
+    setAiLimits(getAiLimitState(userKey));
+  }, [googleUser, generationDialogOpen]);
 
-  const handleRemoveGarment = (identifier: string, category: "tops" | "bottoms" | "soles") => {
-    if (category === "tops") {
-      setShirt((prev) => prev.filter((f) => !f.name.includes(identifier)));
-    } else if (category === "bottoms") {
-      setPants((prev) => prev.filter((f) => !f.name.includes(identifier)));
-    } else if (category === "soles") {
-      setShoes((prev) => prev.filter((f) => !f.name.includes(identifier)));
-    }
-    setRecs(null);
-  };
+  // Synchronize counts and saved status from localStorage
+  const refreshWardrobeData = () => {
+    const outfits = getSavedOutfits();
+    const gallery = getGalleryItems();
+    setAttireCount(outfits.length);
+    setGalleryCount(gallery.length);
 
-  const results = useRef<HTMLElement>(null);
-  const cache = useRef(new Map<string, ClothingAnalysis>());
-  const ready = shirt.length > 0 && pants.length > 0 && !loading;
-
-  const updateWardrobeState = () => {
-    const saved = getSavedOutfits();
-    const galleryItems = getGalleryItems();
-    setAttireCount(saved.length);
-    setGalleryCount(galleryItems.length);
-
-    if (recs && previews.tops.length > 0) {
-      const nextMap: Record<string, boolean> = {};
+    if (recs && previews.tops.length > 0 && previews.bottoms.length > 0) {
+      const nextMap: Record<number, string | null> = {};
       recs.forEach((rec, idx) => {
-        const topPrev = previews.tops[rec.top - 1];
-        const bottomPrev = previews.bottoms[rec.bottom - 1];
-        const solePrev = rec.sole ? previews.soles[rec.sole - 1] : undefined;
-        if (isOutfitAlreadySaved(rec, topPrev, bottomPrev, solePrev)) {
-          nextMap[idx] = true;
+        const topUrl = previews.tops[rec.top - 1];
+        const bottomUrl = previews.bottoms[rec.bottom - 1];
+        const soleUrl = rec.sole ? previews.soles[rec.sole - 1] : undefined;
+        if (topUrl && bottomUrl) {
+          nextMap[idx] = isOutfitAlreadySaved(rec, topUrl, bottomUrl, soleUrl);
         }
       });
       setSavedMap(nextMap);
@@ -151,42 +163,39 @@ export default function App() {
   };
 
   useEffect(() => {
-    updateWardrobeState();
-    const handleUpdate = () => updateWardrobeState();
-    window.addEventListener("wardrobe_updated", handleUpdate);
-    return () => window.removeEventListener("wardrobe_updated", handleUpdate);
-  }, [recs, previews]);
+    refreshWardrobeData();
+  }, [googleUser, recs, previews]);
 
-  // Auto-save any uploaded clothing images into Wardrobe Gallery
+  // Listen for storage changes
+  useEffect(() => {
+    const handler = () => refreshWardrobeData();
+    window.addEventListener("wardrobe_updated", handler);
+    return () => window.removeEventListener("wardrobe_updated", handler);
+  }, [googleUser, recs, previews]);
+
+  // Auto-save uploaded garments to Gallery
   useEffect(() => {
     const autoSave = async () => {
-      const itemsToSave: Array<{
-        dataUrl: string;
-        category: "Top" | "Bottom" | "Sole";
-        name?: string;
-      }> = [];
-
-      for (const f of shirt) {
-        try {
-          const dataUrl = await fileToDataUrl(f);
-          itemsToSave.push({ dataUrl, category: "Top", name: f.name });
-        } catch (e) {}
-      }
-      for (const f of pants) {
-        try {
-          const dataUrl = await fileToDataUrl(f);
-          itemsToSave.push({ dataUrl, category: "Bottom", name: f.name });
-        } catch (e) {}
-      }
-      for (const f of shoes) {
-        try {
-          const dataUrl = await fileToDataUrl(f);
-          itemsToSave.push({ dataUrl, category: "Sole", name: f.name });
-        } catch (e) {}
-      }
-
-      if (itemsToSave.length > 0) {
-        await autoSaveToGallery(itemsToSave);
+      try {
+        const itemsToSave: Array<{ dataUrl: string; category: ClothingCategory; name?: string }> = [];
+        for (const file of shirt) {
+          const url = await fileToDataUrl(file);
+          itemsToSave.push({ dataUrl: url, category: "Top", name: file.name });
+        }
+        for (const file of pants) {
+          const url = await fileToDataUrl(file);
+          itemsToSave.push({ dataUrl: url, category: "Bottom", name: file.name });
+        }
+        for (const file of shoes) {
+          const url = await fileToDataUrl(file);
+          itemsToSave.push({ dataUrl: url, category: "Sole", name: file.name });
+        }
+        if (itemsToSave.length > 0) {
+          await autoSaveToGallery(itemsToSave);
+          refreshWardrobeData();
+        }
+      } catch (e) {
+        console.error("Auto save to gallery failed:", e);
       }
     };
 
@@ -201,20 +210,15 @@ export default function App() {
     }
   }, [recs]);
 
-  // Check config and Pinterest status on initial load
+  // Check config status on initial load
   useEffect(() => {
     fetch("/api/outfits/config-status")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) {
-          if (!data.geminiConfigured) {
-            toast.error(
-              "Gemini API key is not detected in server environment. Please ensure GEMINI_API_KEY is configured in project secrets."
-            );
-          }
-          if (data.pinterest?.connected) {
-            setIsPinterestConnected(true);
-          }
+        if (data && !data.geminiConfigured) {
+          toast.error(
+            "Gemini API key is not detected in server environment. Please ensure GEMINI_API_KEY is configured in project secrets."
+          );
         }
       })
       .catch(() => {});
@@ -228,182 +232,174 @@ export default function App() {
 
     const userKey = googleUser?.email || googleUser?.uid;
 
-    if (mode === "ai") {
-      const currentLimits = getAiLimitState(userKey);
-      if (currentLimits.used >= currentLimits.total) {
-        toast.error(
-          `AI daily limit reached (${currentLimits.used}/${currentLimits.total} used today). Please use Quick Shuffle.`
+    if (mode === "basic") {
+      setLoading(true);
+      try {
+        const topUrls = await Promise.all(shirt.map((file) => fileToDataUrl(file)));
+        const bottomUrls = await Promise.all(pants.map((file) => fileToDataUrl(file)));
+        const soleUrls = await Promise.all(shoes.map((file) => fileToDataUrl(file)));
+
+        setPreviews({ tops: topUrls, bottoms: bottomUrls, soles: soleUrls });
+
+        const quickRecs = generateClientQuickShuffle(
+          shirt.length,
+          pants.length,
+          shoes.length > 0 ? shoes.length : undefined
         );
-        return;
+
+        if (quickRecs.length === 0) {
+          toast.error("Could not create combinations. Please ensure you added tops and bottoms.");
+          return;
+        }
+
+        setRecs(quickRecs);
+        toast.success(`Generated ${quickRecs.length} outfits with Quick Shuffle!`);
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err?.message || "Failed to generate quick shuffle.");
+      } finally {
+        setLoading(false);
       }
-      const updatedLimits = recordAiGeneration(userKey);
-      setAiLimits(updatedLimits);
+      return;
+    }
+
+    // AI MODE
+    const limits = getAiLimitState(userKey);
+    if (limits.used >= limits.total) {
+      toast.error("Daily AI styling limit reached. Use Quick Shuffle for unlimited combinations!");
+      setGenerationDialogOpen(true);
+      return;
     }
 
     setLoading(true);
-    setRecs(null);
-    setShown({});
-    setSimilarImages({});
-    setProviderInfo({});
 
     try {
-      const [tops, bottoms, soles] = await Promise.all([
-        Promise.all(shirt.map(fileToDataUrl)),
-        Promise.all(pants.map(fileToDataUrl)),
-        Promise.all(shoes.map(fileToDataUrl)),
-      ]);
+      const topUrls = await Promise.all(shirt.map((file) => fileToDataUrl(file)));
+      const bottomUrls = await Promise.all(pants.map((file) => fileToDataUrl(file)));
+      const soleUrls = await Promise.all(shoes.map((file) => fileToDataUrl(file)));
 
+      setPreviews({ tops: topUrls, bottoms: bottomUrls, soles: soleUrls });
 
-      // 1. FAST CLIENT-SIDE QUICK SHUFFLE
-      if (mode === "basic") {
-        const quickCombos = generateClientQuickShuffle(tops.length, bottoms.length, soles.length);
-        setPreviews({ tops, bottoms, soles });
-        setRecs(quickCombos);
-        toast.success(`Quick Shuffle: ${quickCombos.length} outfit combinations ready!`);
-        setLoading(false);
-        return;
-      }
+      const allUrls = [...topUrls, ...bottomUrls, ...soleUrls];
+      const uncached = allUrls.filter((url) => !cache.current.has(url));
 
-      // 2. AI STYLIST MODE
-      let topsAnalysis: ClothingAnalysis[] = [];
-      let bottomsAnalysis: ClothingAnalysis[] = [];
-      let solesAnalysis: ClothingAnalysis[] = [];
-
-      try {
-        const fresh = [
-          ...new Set([...tops, ...bottoms, ...soles].filter((u) => !cache.current.has(u))),
-        ];
-
-        if (fresh.length) {
-          const analyseRes = await fetch("/api/outfits/analyse", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ images: fresh }),
-          });
-
-          if (analyseRes.ok) {
-            const { items } = (await analyseRes.json()) as { items: ClothingAnalysis[] };
-            fresh.forEach((u, i) => cache.current.set(u, items[i]!));
-          }
-        }
-
-        const fallbackItem = (type: string, color: string): ClothingAnalysis => ({
-          type,
-          primaryColor: color,
-          secondaryColors: [],
-          pattern: "solid",
-          style: "smart casual",
-          fabric: "cotton",
-          aesthetic: "minimal",
-        });
-
-        topsAnalysis = tops.map((u) => cache.current.get(u) || fallbackItem("shirt", "neutral"));
-        bottomsAnalysis = bottoms.map((u) => cache.current.get(u) || fallbackItem("pants", "neutral"));
-        solesAnalysis = soles.map((u) => cache.current.get(u) || fallbackItem("shoes", "white"));
-
-        const recommendRes = await fetch("/api/outfits/recommend", {
+      if (uncached.length > 0) {
+        const res = await fetch("/api/outfits/analyse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tops: topsAnalysis,
-            bottoms: bottomsAnalysis,
-            soles: solesAnalysis,
-            mode,
-          }),
+          body: JSON.stringify({ images: uncached }),
         });
 
-        if (recommendRes.ok) {
-          const { recommendations } = (await recommendRes.json()) as {
-            recommendations: OutfitRecommendation[];
-          };
-          if (recommendations && recommendations.length > 0) {
-            setPreviews({ tops, bottoms, soles });
-            setRecs(recommendations);
-            toast.success(
-              `Generated ${recommendations.length} AI outfit recommendation${
-                recommendations.length > 1 ? "s" : ""
-              }!`
-            );
-            return;
-          }
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to analyse clothing items.");
         }
-      } catch (aiErr) {
-        console.warn("AI generation failed or server unreachable, falling back to Quick Shuffle:", aiErr);
+
+        const data = await res.json();
+        uncached.forEach((url, i) => cache.current.set(url, data.items[i]));
       }
 
-      // 3. Graceful fallback to Quick Shuffle if AI service was unreachable
-      const fallbackCombos = generateClientQuickShuffle(tops.length, bottoms.length, soles.length);
-      setPreviews({ tops, bottoms, soles });
-      setRecs(fallbackCombos);
-      toast.info("Generated Quick Shuffle combinations (AI server unreachable or cold start).");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Something went wrong — please try again."
+      const tops = topUrls.map((url) => cache.current.get(url)!);
+      const bottoms = bottomUrls.map((url) => cache.current.get(url)!);
+      const soles = soleUrls.length > 0 ? soleUrls.map((url) => cache.current.get(url)!) : undefined;
+
+      const res = await fetch("/api/outfits/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tops, bottoms, soles }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to generate recommendations.");
+      }
+
+      const data = await res.json();
+      setRecs(data.recommendations);
+
+      const updatedLimits = recordAiGeneration(userKey);
+      setAiLimits(updatedLimits);
+
+      const remaining = Math.max(0, updatedLimits.total - updatedLimits.used);
+      toast.success(
+        `AI Outfits generated! (${remaining} AI generation${
+          remaining === 1 ? "" : "s"
+        } left today)`
       );
+    } catch (err: any) {
+      console.warn("AI generation failed or timed out, trying Quick Shuffle fallback:", err);
+      try {
+        const topUrls = await Promise.all(shirt.map((file) => fileToDataUrl(file)));
+        const bottomUrls = await Promise.all(pants.map((file) => fileToDataUrl(file)));
+        const soleUrls = await Promise.all(shoes.map((file) => fileToDataUrl(file)));
+
+        setPreviews({ tops: topUrls, bottoms: bottomUrls, soles: soleUrls });
+        const fallbackRecs = generateClientQuickShuffle(
+          shirt.length,
+          pants.length,
+          shoes.length > 0 ? shoes.length : undefined
+        );
+
+        if (fallbackRecs.length > 0) {
+          setRecs(fallbackRecs);
+          toast.success("Generated instant outfit combinations!");
+          return;
+        }
+      } catch (fallbackErr) {
+        console.error("Fallback also failed:", fallbackErr);
+      }
+
+      toast.error(err?.message || "An error occurred while generating outfits.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleToggleSave = (index: number, rec: OutfitRecommendation) => {
-    const topPreview = previews.tops[rec.top - 1];
-    const bottomPreview = previews.bottoms[rec.bottom - 1];
-    const solePreview = rec.sole ? previews.soles[rec.sole - 1] : undefined;
+    const topUrl = previews.tops[rec.top - 1];
+    const bottomUrl = previews.bottoms[rec.bottom - 1];
+    const soleUrl = rec.sole ? previews.soles[rec.sole - 1] : undefined;
 
-    const existingId = isOutfitAlreadySaved(rec, topPreview, bottomPreview, solePreview);
-    if (existingId) {
-      removeOutfitFromStorage(existingId);
-      toast.info("Removed from Attire");
-    } else {
-      saveOutfitToStorage(rec, topPreview, bottomPreview, solePreview);
-      toast.success("saved to wardrobe");
+    if (!topUrl || !bottomUrl) {
+      toast.error("Unable to save outfit: garment preview missing.");
+      return;
     }
-    updateWardrobeState();
+
+    const savedId = savedMap[index];
+
+    if (savedId) {
+      removeOutfitFromStorage(savedId);
+      setSavedMap((prev) => ({ ...prev, [index]: null }));
+      setAttireCount((prev) => Math.max(0, prev - 1));
+      toast.info("Outfit removed from Attire wardrobe.");
+    } else {
+      const saved = saveOutfitToStorage(rec, topUrl, bottomUrl, soleUrl);
+      setSavedMap((prev) => ({ ...prev, [index]: saved.id }));
+      setAttireCount((prev) => prev + 1);
+      toast.success("Outfit saved to Attire wardrobe!");
+    }
   };
 
-  const toggleShown = async (index: number, rec: OutfitRecommendation) => {
-    const nextState = !shown[index];
-    setShown((s) => ({ ...s, [index]: nextState }));
+  const handleAddGarmentFromSearch = (file: File, category: "tops" | "bottoms" | "soles") => {
+    if (category === "tops") {
+      setShirt((prev) => [...prev, file]);
+      toast.success("Added top garment to wardrobe.");
+    } else if (category === "bottoms") {
+      setPants((prev) => [...prev, file]);
+      toast.success("Added bottom garment to wardrobe.");
+    } else if (category === "soles") {
+      setShoes((prev) => [...prev, file]);
+      toast.success("Added sole/footwear to wardrobe.");
+    }
+  };
 
-    // If opening and not yet fetched, fetch the 4 visually similar real images
-    if (nextState && !similarImages[index]) {
-      setSimilarLoading((prev) => ({ ...prev, [index]: true }));
-      try {
-        const topAnalysis = cache.current.get(previews.tops[rec.top - 1]);
-        const bottomAnalysis = cache.current.get(previews.bottoms[rec.bottom - 1]);
-        const soleAnalysis =
-          rec.sole && previews.soles[rec.sole - 1]
-            ? cache.current.get(previews.soles[rec.sole - 1])
-            : undefined;
-
-        const res = await fetch("/api/outfits/similar-images", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            style: rec.style,
-            colors: rec.colors,
-            top: topAnalysis,
-            bottom: bottomAnalysis,
-            sole: soleAnalysis,
-          }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to fetch similar images.");
-        }
-
-        const data = (await res.json()) as SimilarImagesResponse;
-        setSimilarImages((prev) => ({ ...prev, [index]: data.results || [] }));
-        setProviderInfo((prev) => ({ ...prev, [index]: data.provider }));
-        if (data.note) {
-          setConfigNote(data.note);
-        }
-      } catch (err: any) {
-        toast.error(err?.message || "Could not fetch Pinterest images.");
-      } finally {
-        setSimilarLoading((prev) => ({ ...prev, [index]: false }));
-      }
+  const handleRemoveGarment = (identifier: string, category: "tops" | "bottoms" | "soles") => {
+    if (category === "tops") {
+      setShirt((prev) => prev.filter((f) => f.name !== identifier));
+    } else if (category === "bottoms") {
+      setPants((prev) => prev.filter((f) => f.name !== identifier));
+    } else if (category === "soles") {
+      setShoes((prev) => prev.filter((f) => f.name !== identifier));
     }
   };
 
@@ -425,9 +421,6 @@ export default function App() {
     setPreviews({ tops: [], bottoms: [], soles: [] });
     setRecs(null);
     setLoading(false);
-    setShown({});
-    setSimilarImages({});
-    setProviderInfo({});
     cache.current.clear();
     window.dispatchEvent(new CustomEvent("wearbot_reset"));
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -440,8 +433,6 @@ export default function App() {
       <WaveBackground className="fixed inset-x-0 bottom-0 pointer-events-none z-0" intensity={0.95} />
 
       <SiteHeader
-        onOpenPinterest={() => setPinterestDialogOpen(true)}
-        isPinterestConnected={isPinterestConnected}
         onOpenWardrobe={() => {
           setWardrobeTab("attire");
           setWardrobeOpen(true);
@@ -460,53 +451,38 @@ export default function App() {
             <UploadBox
               label="Tops"
               files={shirt}
-              onChange={(f) => {
-                setShirt(f);
-                setRecs(null);
-              }}
+              onChange={setShirt}
             />
           </div>
-          <div className="hidden w-px bg-line md:block" aria-hidden />
-          <div className="flex flex-1 justify-center md:px-8">
+          <div className="flex flex-1 justify-center md:border-x md:border-line md:px-8">
             <UploadBox
               label="Bottoms"
               files={pants}
-              onChange={(f) => {
-                setPants(f);
-                setRecs(null);
-              }}
+              onChange={setPants}
             />
           </div>
-          <div className="hidden w-px bg-line md:block" aria-hidden />
           <div className="flex flex-1 justify-center md:pl-8">
             <UploadBox
               label="Soles"
               files={shoes}
-              onChange={(f) => {
-                setShoes(f);
-                setRecs(null);
-              }}
+              onChange={setShoes}
             />
           </div>
         </section>
 
-        <div className="mt-12 hidden h-px w-full bg-line md:block" aria-hidden />
-
+        {/* Generate Button opens Mode Selection modal (Quick Shuffle vs AI Styling) */}
         <button
           type="button"
-          disabled={loading}
           onClick={() => {
-            if (!ready) {
-              toast.info("Please add at least 1 top and 1 bottom to generate outfits.");
+            if (shirt.length === 0 || pants.length === 0) {
+              toast.error("Please add at least 1 top and 1 bottom to generate outfits.");
               return;
             }
-            const userKey = googleUser?.email || googleUser?.uid;
-            setAiLimits(getAiLimitState(userKey));
             setGenerationDialogOpen(true);
           }}
-          className="mt-12 flex w-full max-w-md items-center justify-center gap-2 rounded-md bg-[#D3454A] px-8 py-3.5 text-center text-base font-semibold text-white shadow-md transition-all hover:bg-[#BD363B] active:bg-[#A6292E] hover:shadow-lg active:scale-[0.99] cursor-pointer"
+          disabled={loading}
+          className="mt-14 w-full max-w-xs rounded-md bg-[#D3454A] hover:bg-[#BD363B] active:bg-[#A6292E] py-3 text-sm font-semibold tracking-wide text-white transition-colors disabled:opacity-50 cursor-pointer shadow-md"
         >
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? "Styling your outfits…" : "Generate Outfits"}
         </button>
 
@@ -516,21 +492,11 @@ export default function App() {
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight">
                   {recs[0]?.isBasic ? "Quick Shuffle combinations" : "Outfit recommendations"}
-                  {!recs[0]?.isBasic && (
-                    <button
-                      type="button"
-                      onClick={() => setPinterestDialogOpen(true)}
-                      className="flex items-center gap-1 text-sm font-normal text-muted-foreground hover:text-pinterest transition-colors"
-                    >
-                      · inspired by <PinterestLogo className="h-4 w-4 text-pinterest" /> Pinterest
-                      <span className="text-[10px] underline ml-0.5">(settings)</span>
-                    </button>
-                  )}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {recs[0]?.isBasic
                     ? "Instant wardrobe combinations."
-                    : "Tailored complete combinations with AI styling analysis and visual inspiration."}
+                    : "Tailored complete combinations with AI styling analysis."}
                 </p>
               </div>
 
@@ -542,7 +508,7 @@ export default function App() {
                     setWardrobeTab("attire");
                     setWardrobeOpen(true);
                   }}
-                  className="flex items-center gap-1.5 rounded-md border border-line bg-card px-3 py-1.5 text-xs font-medium hover:border-foreground transition-colors"
+                  className="flex items-center gap-1.5 rounded-md border border-line bg-card px-3 py-1.5 text-xs font-medium hover:border-foreground transition-colors cursor-pointer"
                   title="View saved outfits in Attire"
                 >
                   <Bookmark className="h-3.5 w-3.5" />
@@ -556,21 +522,11 @@ export default function App() {
                     setWardrobeTab("gallery");
                     setWardrobeOpen(true);
                   }}
-                  className="flex items-center gap-1.5 rounded-md border border-line bg-card px-3 py-1.5 text-xs font-medium hover:border-foreground transition-colors"
+                  className="flex items-center gap-1.5 rounded-md border border-line bg-card px-3 py-1.5 text-xs font-medium hover:border-foreground transition-colors cursor-pointer"
                   title="View uploaded photos in Gallery"
                 >
                   <Images className="h-3.5 w-3.5" />
                   <span>Gallery ({galleryCount})</span>
-                </button>
-
-                {/* Pinterest button */}
-                <button
-                  type="button"
-                  onClick={() => setPinterestDialogOpen(true)}
-                  className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium hover:border-pinterest hover:text-pinterest transition-colors"
-                >
-                  <PinterestLogo className="h-3.5 w-3.5 text-pinterest" />
-                  {isPinterestConnected ? "Pinterest Connected" : "Connect Pinterest"}
                 </button>
               </div>
             </div>
@@ -579,6 +535,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {recs.map((rec, i) => {
                 const hasSole = Boolean(rec.sole && previews.soles?.[rec.sole - 1]);
+                const isSaved = Boolean(savedMap[i]);
 
                 return (
                   <div
@@ -637,7 +594,7 @@ export default function App() {
                           <h3 className="text-base font-bold text-foreground">
                             {rec.style}
                           </h3>
-                          <span className="inline-flex items-center rounded-full bg-pinterest/10 px-2.5 py-0.5 text-xs font-bold text-pinterest">
+                          <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
                             {rec.score}/10 Match
                           </span>
                         </div>
@@ -653,124 +610,33 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Action Buttons: Show Pinterest & Save to Wardrobe */}
+                    {/* Action Button: Save to Wardrobe */}
                     <div className="mt-auto flex items-center gap-2 pt-2 border-t border-line/60">
-                      {!rec.isBasic && (
-                        <button
-                          type="button"
-                          onClick={() => toggleShown(i, rec)}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-85 cursor-pointer"
-                        >
-                          <PinterestLogo className="h-3.5 w-3.5 text-pinterest" />
-                          {shown[i] ? "Hide Pinterest inspirations" : "4 Pinterest inspirations"}
-                        </button>
-                      )}
-
                       <button
                         type="button"
                         onClick={() => handleToggleSave(i, rec)}
-                        className={`flex items-center justify-center gap-1.5 rounded-md px-4 py-2.5 text-xs font-medium border transition-all cursor-pointer ${
-                          rec.isBasic ? "w-full" : ""
-                        } ${
-                          savedMap[i]
-                            ? "bg-pinterest/10 border-pinterest text-pinterest font-semibold"
+                        className={`w-full flex items-center justify-center gap-1.5 rounded-md px-4 py-2.5 text-xs font-medium border transition-all cursor-pointer ${
+                          isSaved
+                            ? "bg-primary/10 border-primary text-primary font-semibold"
                             : "border-line hover:border-foreground bg-card text-foreground"
                         }`}
-                        title={savedMap[i] ? "Saved in Attire" : "Save to Attire"}
+                        title={isSaved ? "Saved in Attire" : "Save to Attire"}
                       >
-                        {savedMap[i] ? (
-                          <BookmarkCheck className="h-4 w-4 text-pinterest" />
+                        {isSaved ? (
+                          <BookmarkCheck className="h-4 w-4 text-primary" />
                         ) : (
                           <Bookmark className="h-4 w-4" />
                         )}
-                        <span>{savedMap[i] ? "Saved" : "Save to Wardrobe"}</span>
+                        <span>{isSaved ? "Saved in Wardrobe" : "Save to Wardrobe"}</span>
                       </button>
                     </div>
-
-                    {/* Expanded 4 Visually Similar Internet Images (Only for AI generation) */}
-                    {!rec.isBasic && shown[i] && (
-                      <div className="mt-2 flex flex-col gap-2 border-t border-line/60 pt-2 animate-in fade-in-50 duration-200">
-                        <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
-                          <span className="flex items-center gap-1 text-foreground">
-                            <PinterestLogo className="h-3 w-3 text-pinterest" />
-                            4 Similar Outfits
-                          </span>
-                          {providerInfo[i] && (
-                            <span className="text-[10px] text-muted-foreground font-normal">
-                              via {providerInfo[i]}
-                            </span>
-                          )}
-                        </div>
-
-                        {similarLoading[i] ? (
-                          <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-line bg-muted/30 text-xs text-muted-foreground">
-                            <Loader2 className="h-5 w-5 animate-spin text-pinterest" />
-                            <span>Finding 4 similar outfits…</span>
-                          </div>
-                        ) : similarImages[i] && similarImages[i].length > 0 ? (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                            {similarImages[i].slice(0, 4).map((item, imgIdx) => (
-                              <a
-                                key={item.id || imgIdx}
-                                href={item.sourceUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="group relative flex flex-col overflow-hidden rounded-md border border-line bg-background transition-all hover:border-pinterest hover:shadow-xs"
-                                title={`${item.title} — Click to view on Pinterest`}
-                              >
-                                <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
-                                  <img
-                                    src={item.imageUrl}
-                                    alt={item.title}
-                                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                                    loading="lazy"
-                                  />
-                                  <span className="absolute bottom-1 right-1 rounded bg-black/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100">
-                                    <ExternalLink className="h-3 w-3" />
-                                  </span>
-                                </div>
-                                <div className="p-1">
-                                  <p className="truncate text-[10px] font-medium leading-tight group-hover:text-pinterest">
-                                    {item.title}
-                                  </p>
-                                  <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
-                                    <PinterestLogo className="h-2 w-2 text-pinterest" />
-                                    {item.sourceDomain}
-                                  </span>
-                                </div>
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex aspect-[3/4] items-center justify-center rounded-md border border-dashed border-line p-2 text-center text-xs text-muted-foreground">
-                            No similar images found.
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
-
-            {!recs[0]?.isBasic && configNote && (
-              <div className="mt-8 flex items-start gap-2.5 rounded-lg border border-line bg-accent/30 p-3 text-xs text-muted-foreground">
-                <Info className="h-4 w-4 shrink-0 text-foreground mt-0.5" />
-                <div className="leading-relaxed">
-                  <p className="font-medium text-foreground">Internet & Pinterest Image Integration</p>
-                  <p>{configNote}</p>
-                </div>
-              </div>
-            )}
           </section>
         )}
       </main>
-
-      <PinterestConnectDialog
-        open={pinterestDialogOpen}
-        onOpenChange={setPinterestDialogOpen}
-        onConnectedChange={setIsPinterestConnected}
-      />
 
       <WardrobeDialog
         open={wardrobeOpen}

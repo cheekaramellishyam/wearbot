@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { WaveBackground } from "@/components/WaveBackground";
+import { searchLocalFashionCatalog } from "@/components/FashionSearchCatalog";
 
 interface WebFashionItem {
   id: string;
@@ -64,22 +65,67 @@ export function FashionSearchDialog({
     try {
       const url = `/api/fashion/search?q=${encodeURIComponent(trimmed)}&category=all`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error("Search service temporarily unavailable");
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (data.isFashion === false) {
+          setNonFashionError(
+            data.message ||
+              "Please search for clothing, footwear, fabrics, or fashion styles. Search is strictly scoped to fashion."
+          );
+          setWebResults([]);
+          setLoadingWeb(false);
+          return;
+        }
 
-      if (data.isFashion === false) {
-        setNonFashionError(
-          data.message ||
-            "Please search for clothing, footwear, fabrics, or fashion styles. Search is strictly scoped to fashion."
-        );
-        setWebResults([]);
-      } else {
+        if (data.results && data.results.length > 0) {
+          setNonFashionError(null);
+          setWebResults(data.results);
+          setLoadingWeb(false);
+          return;
+        }
+      }
+
+      // If network returns empty or non-200, seamlessly match curated fashion items
+      const localMatches = searchLocalFashionCatalog(trimmed, "all");
+      if (localMatches.length > 0) {
         setNonFashionError(null);
-        setWebResults(data.results || []);
+        setWebResults(
+          localMatches.map((item) => ({
+            id: item.id,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            thumbUrl: item.imageUrl,
+            sourceUrl: item.sourceUrl,
+            category: item.category,
+            subCategory: item.subCategory,
+            color: item.color,
+            style: item.style,
+          }))
+        );
+      } else {
+        setWebResults([]);
       }
     } catch (err: any) {
-      console.warn("Fashion web search error:", err);
-      setWebResults([]);
+      console.warn("Fashion web search API failed, falling back to catalog:", err);
+      const localMatches = searchLocalFashionCatalog(trimmed, "all");
+      if (localMatches.length > 0) {
+        setNonFashionError(null);
+        setWebResults(
+          localMatches.map((item) => ({
+            id: item.id,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            thumbUrl: item.imageUrl,
+            sourceUrl: item.sourceUrl,
+            category: item.category,
+            subCategory: item.subCategory,
+            color: item.color,
+            style: item.style,
+          }))
+        );
+      } else {
+        setWebResults([]);
+      }
     } finally {
       setLoadingWeb(false);
     }
@@ -118,13 +164,56 @@ export function FashionSearchDialog({
     if (!onSelectGarment) return;
     setLoadingItemId(item.id);
 
+    const filename = `${item.title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 40)}.jpg`;
+
+    // 1. Try server proxy endpoint
     try {
       const proxyUrl = `/api/fashion/proxy-image?url=${encodeURIComponent(item.imageUrl)}`;
       const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error("Could not download garment image");
-      const blob = await res.blob();
-      const filename = `${item.title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 40)}.jpg`;
-      const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+        onSelectGarment(file, item.category);
+        setLoadingItemId(null);
+        return;
+      }
+    } catch (e) {}
+
+    // 2. Try direct CORS fetch (e.g. Unsplash images)
+    try {
+      const directRes = await fetch(item.imageUrl, { mode: "cors" });
+      if (directRes.ok) {
+        const blob = await directRes.blob();
+        const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+        onSelectGarment(file, item.category);
+        setLoadingItemId(null);
+        return;
+      }
+    } catch (e) {}
+
+    // 3. Canvas image conversion fallback
+    try {
+      const file = await new Promise<File>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || 600;
+          canvas.height = img.naturalHeight || 800;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Canvas context failed"));
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], filename, { type: "image/jpeg" }));
+            } else {
+              reject(new Error("Canvas blob failed"));
+            }
+          }, "image/jpeg", 0.85);
+        };
+        img.onerror = () => reject(new Error("Image element load failed"));
+        img.src = item.imageUrl;
+      });
 
       onSelectGarment(file, item.category);
     } catch (err) {
@@ -160,7 +249,7 @@ export function FashionSearchDialog({
 
             {loadingWeb && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-pinterest" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                 <span>Searching web…</span>
               </div>
             )}
@@ -214,7 +303,7 @@ export function FashionSearchDialog({
             </div>
           ) : loadingWeb && displayItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-pinterest mb-3" />
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
               <h3 className="text-sm font-semibold">Browsing the web for "{query}"…</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Retrieving real fashion photos and styling inspiration.
@@ -288,7 +377,7 @@ export function FashionSearchDialog({
                         href={item.sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-pinterest"
+                        className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary"
                         title="View style source"
                         aria-label="View source"
                       >

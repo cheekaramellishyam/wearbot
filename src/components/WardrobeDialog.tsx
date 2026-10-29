@@ -236,7 +236,7 @@ export function WardrobeDialog({
           <DialogHeader className="border-b border-line pb-4 shrink-0 relative z-10">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pr-8">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pinterest/10 text-pinterest border border-pinterest/20 shrink-0">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
                   <WardrobeHangerLogo className="h-5 w-auto" />
                 </div>
                 <div>
@@ -382,7 +382,7 @@ export function WardrobeDialog({
                           <div className="flex flex-col gap-1 flex-1">
                             <div className="flex items-center justify-between">
                               <p className="text-sm font-semibold">{rec.style}</p>
-                              <span className="text-xs font-bold text-pinterest">
+                              <span className="text-xs font-bold text-primary">
                                 {rec.score}/10
                               </span>
                             </div>

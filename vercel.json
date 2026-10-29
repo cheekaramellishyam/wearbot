@@ -1,20 +1,19 @@
 {
   "version": 2,
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/auth/(.*)",
-      "destination": "/api/auth/$1"
+      "destination": "/api?__route__=$1"
     },
     {
       "source": "/privacy",
-      "destination": "/api/privacy"
+      "destination": "/api?__route__=privacy"
     },
     {
-      "source": "/((?!api/|auth/|privacy).*)",
+      "source": "/((?!api/|privacy).*)",
       "destination": "/index.html"
     }
   ]

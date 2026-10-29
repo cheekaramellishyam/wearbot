@@ -123,7 +123,7 @@ export function UploadBox({ label, files = [], onChange }: { label: string; file
         className={cn(
           "flex w-full flex-col gap-3 rounded-lg border-2 border-dashed border-line p-3 transition-all",
           "hover:border-foreground",
-          drag && "scale-[1.02] border-pinterest bg-accent",
+          drag && "scale-[1.02] border-primary bg-accent",
         )}
       >
         <button
@@ -136,7 +136,7 @@ export function UploadBox({ label, files = [], onChange }: { label: string; file
             full && "cursor-not-allowed opacity-50 hover:bg-transparent",
           )}
         >
-          <ImagePlus className={cn("h-7 w-7 transition-colors", drag ? "text-pinterest" : "text-muted-foreground")} strokeWidth={1.5} />
+          <ImagePlus className={cn("h-7 w-7 transition-colors", drag ? "text-primary" : "text-muted-foreground")} strokeWidth={1.5} />
           <span className="text-sm font-medium">{full ? "Limit reached" : drag ? "Drop to add" : "Drag & drop or click"}</span>
         </button>
 
@@ -182,7 +182,7 @@ export function UploadBox({ label, files = [], onChange }: { label: string; file
         type="button"
         disabled={full}
         onClick={() => setCameraOpen(true)}
-        className="min-h-11 flex items-center justify-center gap-2 rounded-md bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-xs"
+        className="min-h-11 flex items-center justify-center gap-2 rounded-md bg-foreground px-6 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-xs"
       >
         <Camera className="h-4 w-4" />
         Take a photo

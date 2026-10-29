@@ -100,12 +100,12 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
             className={`rounded-xl border p-4 transition-all ${
               isAiLimitReached
                 ? "border-line bg-muted/20 opacity-90"
-                : "border-pinterest/30 bg-pinterest/5 hover:border-pinterest/60"
+                : "border-primary/30 bg-primary/5 hover:border-primary/60"
             }`}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pinterest text-white">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div>
@@ -121,7 +121,7 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
                 className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   isAiLimitReached
                     ? "bg-destructive/10 text-destructive"
-                    : "bg-pinterest/20 text-pinterest"
+                    : "bg-primary/20 text-primary"
                 }`}
               >
                 {limits.used} / {limits.total} used today
@@ -139,7 +139,7 @@ export const GenerationModeDialog: React.FC<GenerationModeDialogProps> = ({
               <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
                 <div
                   className={`h-full transition-all duration-300 ${
-                    isAiLimitReached ? "bg-destructive" : "bg-pinterest"
+                    isAiLimitReached ? "bg-destructive" : "bg-[#D3454A]"
                   }`}
                   style={{ width: `${Math.min(100, (limits.used / limits.total) * 100)}%` }}
                 />

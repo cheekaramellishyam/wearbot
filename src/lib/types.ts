@@ -19,19 +19,3 @@ export type OutfitRecommendation = {
   occasion: string;
   isBasic?: boolean;
 };
-
-export type SimilarImageResult = {
-  id: string;
-  imageUrl: string;
-  title: string;
-  sourceUrl: string;
-  sourceDomain: string;
-  author?: string;
-};
-
-export type SimilarImagesResponse = {
-  results: SimilarImageResult[];
-  provider: string;
-  configuredApi?: string;
-  note?: string;
-};

@@ -4,12 +4,6 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
-import { searchSimilarOutfitImages } from "./server/image-search";
-import {
-  getPinterestAuthUrl,
-  exchangePinterestCode,
-  fetchPinterestUserProfile,
-} from "./server/pinterest-auth";
 import { ClothingAnalysis, OutfitRecommendation } from "./src/lib/types";
 
 dotenv.config();
@@ -21,34 +15,84 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cookieParser());
+
+// CORS & Path normalization for Vercel Serverless Functions rewrites
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+
+  // 1. Check if rewritten with __route__ parameter from vercel.json
+  const routeParam = req.query.__route__ as string | undefined;
+  if (routeParam) {
+    const urlObj = new URL(req.url, "http://localhost");
+    urlObj.searchParams.delete("__route__");
+    const remainingQuery = urlObj.search;
+    req.url = `/api/${routeParam.replace(/^\/+/, "")}${remainingQuery}`;
+  } else {
+    // 2. Fallback to Vercel headers if __route__ not in query
+    const original =
+      (req.headers["x-matched-path"] as string) ||
+      (req.headers["x-forwarded-uri"] as string) ||
+      (req.headers["x-vercel-matched-path"] as string) ||
+      (req.headers["x-original-url"] as string) ||
+      (req.headers["x-rewrite-url"] as string);
+
+    if (original && (req.url === "/" || req.url === "/api" || req.url.startsWith("/api?"))) {
+      const queryIdx = req.url.indexOf("?");
+      const query = queryIdx !== -1 ? req.url.slice(queryIdx) : "";
+      req.url = original + query;
+    }
+  }
+  next();
+});
+
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(express.static(path.resolve(__dirname, "public")));
 
-const geminiApiKey = process.env.GEMINI_API_KEY;
-const ai = new GoogleGenAI({
-  apiKey: geminiApiKey || "",
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+// Dynamically retrieve the Gemini API key from environment
+function getGeminiApiKey(): string {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    ""
+  ).trim();
+}
 
-// Resilient helper for calling Gemini with generous timeout and low thinking latency
+function getGeminiClient(): GoogleGenAI {
+  const apiKey = getGeminiApiKey();
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+}
+
+// Resilient helper for calling Gemini with generous timeout
 async function callGeminiJson<T>(
   parts: any[],
   schema: any,
   systemInstruction: string,
-  timeoutMs = 30000
+  timeoutMs = 7500
 ): Promise<T> {
-  if (!geminiApiKey) {
+  const currentKey = getGeminiApiKey();
+  if (!currentKey) {
     throw new Error(
-      "The Gemini API key is missing. Add GEMINI_API_KEY to your project secrets in Settings > Secrets."
+      "The Gemini API key is missing. Add GEMINI_API_KEY to your Vercel Environment Variables."
     );
   }
 
-  const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest"];
+  const ai = getGeminiClient();
+  const modelsToTry = ["gemini-2.5-flash", "gemini-flash-latest"];
   let lastError: any = null;
 
   for (const model of modelsToTry) {
@@ -60,9 +104,6 @@ async function callGeminiJson<T>(
           systemInstruction,
           responseMimeType: "application/json",
           responseSchema: schema,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
-          },
         },
       });
 
@@ -84,7 +125,6 @@ async function callGeminiJson<T>(
       lastError = err;
       const isTimeout = err?.message?.includes("Timeout:");
       console.warn(`Gemini call with model ${model} failed:`, err?.message || err);
-      // If the primary model timed out after timeoutMs, don't double the wait with another timeout
       if (isTimeout) {
         break;
       }
@@ -264,134 +304,7 @@ function generateStylistRecommendations(
   return selected;
 }
 
-// ----------------- PINTEREST OAUTH ROUTES -----------------
-function getRedirectUri(req: Request): string {
-  if (process.env.APP_URL) {
-    return `${process.env.APP_URL.replace(/\/$/, "")}/auth/pinterest/callback`;
-  }
-  const host = req.get("host") || "localhost:3000";
-  const protocol = req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
-  return `${protocol}://${host}/auth/pinterest/callback`;
-}
 
-// 1. Get Pinterest Authorization URL
-app.get(["/api/auth/pinterest/url", "/auth/pinterest/url"], (req: Request, res: Response) => {
-  const redirectUri = getRedirectUri(req);
-  const result = getPinterestAuthUrl(redirectUri);
-  if (result.error) {
-    res.status(400).json({ error: result.error, redirectUri });
-    return;
-  }
-  res.json({ url: result.url, redirectUri });
-});
-
-// 2. OAuth Callback from Pinterest (Popup handler)
-const pinterestCallbackHandler = async (req: Request, res: Response) => {
-  const code = req.query.code as string;
-  const redirectUri = getRedirectUri(req);
-
-  if (!code) {
-    res.send(`
-      <html>
-        <body style="font-family: sans-serif; text-align: center; padding: 2rem;">
-          <h3>Authentication failed</h3>
-          <p>No authorization code received from Pinterest.</p>
-          <script>setTimeout(() => window.close(), 3000);</script>
-        </body>
-      </html>
-    `);
-    return;
-  }
-
-  const { accessToken, error } = await exchangePinterestCode(code, redirectUri);
-  if (error || !accessToken) {
-    res.send(`
-      <html>
-        <body style="font-family: sans-serif; text-align: center; padding: 2rem;">
-          <h3>Connection Failed</h3>
-          <p>${error || "Failed to exchange authorization code."}</p>
-          <script>setTimeout(() => window.close(), 4000);</script>
-        </body>
-      </html>
-    `);
-    return;
-  }
-
-  // Set cross-origin secure cookie (SameSite: 'none', Secure: true for iframe support)
-  res.cookie("pinterest_token", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-  });
-
-  // PostMessage success to the parent window and close popup
-  res.send(`
-    <html>
-      <head>
-        <title>Connected to Pinterest</title>
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 3rem; background: #fafafa; color: #111; }
-          .badge { display: inline-flex; align-items: center; justify-content: center; background: #e60023; color: #fff; width: 48px; height: 48px; border-radius: 50%; margin-bottom: 1rem; }
-        </style>
-      </head>
-      <body>
-        <div class="badge">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.42 7.62 11.17-.1-.95-.2-2.4.04-3.44.22-.93 1.4-5.95 1.4-5.95s-.36-.72-.36-1.78c0-1.66.97-2.9 2.17-2.9 1.02 0 1.52.77 1.52 1.69 0 1.03-.66 2.57-1 4-.28 1.2.6 2.17 1.78 2.17 2.13 0 3.77-2.25 3.77-5.49 0-2.87-2.06-4.88-5.01-4.88-3.41 0-5.42 2.56-5.42 5.2 0 1.03.4 2.14.89 2.74.1.12.11.22.08.34l-.33 1.36c-.05.22-.18.27-.4.16-1.5-.7-2.43-2.89-2.43-4.65 0-3.78 2.75-7.26 7.92-7.26 4.16 0 7.39 2.97 7.39 6.92 0 4.13-2.6 7.46-6.22 7.46-1.21 0-2.36-.63-2.75-1.38l-.75 2.85c-.27 1.04-1 2.35-1.49 3.15A12 12 0 0 0 24 12C24 5.37 18.63 0 12 0z"/></svg>
-        </div>
-        <h2>Connected to Pinterest!</h2>
-        <p>This window will close automatically…</p>
-        <script>
-          try {
-            if (window.opener) {
-              window.opener.postMessage({ type: 'PINTEREST_AUTH_SUCCESS' }, '*');
-            }
-          } catch (e) {}
-          setTimeout(() => window.close(), 1200);
-        </script>
-      </body>
-    </html>
-  `);
-};
-
-app.get(
-  ["/auth/pinterest/callback", "/auth/pinterest/callback/", "/api/auth/pinterest/callback"],
-  pinterestCallbackHandler
-);
-
-// 3. Pinterest Connection Status
-app.get(["/api/auth/pinterest/status", "/auth/pinterest/status"], async (req: Request, res: Response) => {
-  const token = req.cookies?.pinterest_token || process.env.PINTEREST_ACCESS_TOKEN;
-  const appId = Boolean(process.env.PINTEREST_APP_ID || process.env.PINTEREST_CLIENT_ID);
-
-  if (!token) {
-    res.json({
-      connected: false,
-      oauthConfigured: appId,
-      hasStaticToken: Boolean(process.env.PINTEREST_ACCESS_TOKEN),
-      redirectUri: getRedirectUri(req),
-    });
-    return;
-  }
-
-  const { user } = await fetchPinterestUserProfile(token);
-  res.json({
-    connected: true,
-    user: user || { username: "Pinterest User" },
-    oauthConfigured: appId,
-    hasStaticToken: Boolean(process.env.PINTEREST_ACCESS_TOKEN),
-    redirectUri: getRedirectUri(req),
-  });
-});
-
-// 4. Disconnect Pinterest
-app.post(["/api/auth/pinterest/disconnect", "/auth/pinterest/disconnect"], (_req: Request, res: Response) => {
-  res.clearCookie("pinterest_token", {
-    secure: true,
-    sameSite: "none",
-  });
-  res.json({ success: true });
-});
 
 // ----------------- OUTFIT APIS -----------------
 
@@ -474,10 +387,26 @@ app.post(["/api/outfits/analyse", "/outfits/analyse"], async (req: Request, res:
     const systemInstruction =
       "You are a fashion expert. For each clothing photo identify: type (shirt, T-shirt, polo, trousers, jeans, chinos, shorts...), primaryColor, secondaryColors, pattern/print (or 'solid'), style (casual, formal, smart casual, streetwear...), fabric appearance/texture ('unclear' if not identifiable), and overall aesthetic.";
 
+    if (!getGeminiApiKey()) {
+      const fallbackColors = ["black", "navy", "white", "beige", "grey", "olive", "khaki"];
+      const fallbackTypes = ["shirt", "trousers", "sneakers", "polo", "chinos", "boots", "jacket"];
+      const resultItems = images.map((_, i) => ({
+        type: fallbackTypes[i % fallbackTypes.length],
+        primaryColor: fallbackColors[i % fallbackColors.length],
+        secondaryColors: [],
+        pattern: "solid",
+        style: "smart casual",
+        fabric: "cotton",
+        aesthetic: "modern minimal",
+      }));
+      res.json({ items: resultItems });
+      return;
+    }
+
     let resultItems: ClothingAnalysis[] = [];
     try {
-      // Allow up to 45 seconds for image analysis (scaled with image count)
-      const analyseTimeout = Math.min(60000, Math.max(35000, images.length * 8000));
+      // 7 second timeout to fit within Vercel serverless function limits
+      const analyseTimeout = 7000;
       const result = await callGeminiJson<{ items: ClothingAnalysis[] }>(
         parts,
         schema,
@@ -587,6 +516,12 @@ app.post(["/api/outfits/recommend", "/outfits/recommend"], async (req: Request, 
       ? "You are an expert fashion stylist. Evaluate combinations of top + bottom + sole for colour harmony, pattern matching, style aesthetics, and occasion appropriateness. Return distinct outfit combinations, best first. For each provide: top (1-based index), bottom (1-based index), sole (1-based index), score (compatibility rating integer 1-10), style (e.g. 'Smart Casual', 'Streetwear', 'Summer Minimal'), colors (e.g. 'Navy + beige + white sneakers'), reason (a detailed two-sentence explanation of why these colors, fabrics, and proportions complement each other), occasion (e.g. 'Weekend brunch / Casual hangout'). ONLY use valid top, bottom, and sole indexes."
       : "You are an expert fashion stylist. Evaluate combinations of top + bottom for colour harmony, pattern matching, style aesthetics, and occasion appropriateness. Return distinct outfit combinations, best first. For each provide: top (1-based index), bottom (1-based index), score (compatibility rating integer 1-10), style (e.g. 'Smart Casual', 'Streetwear', 'Clean Minimal'), colors (e.g. 'Navy + beige'), reason (a detailed two-sentence explanation of why these colors, textures, and proportions complement each other), occasion (e.g. 'Dinner date / Evening out'). ONLY use valid top and bottom indexes.";
 
+    if (!getGeminiApiKey()) {
+      const recommendations = generateStylistRecommendations(tops, bottoms, soles, true);
+      res.json({ recommendations });
+      return;
+    }
+
     let recommendations: OutfitRecommendation[] = [];
 
     try {
@@ -594,7 +529,7 @@ app.post(["/api/outfits/recommend", "/outfits/recommend"], async (req: Request, 
         [{ text: textPrompt }],
         schema,
         systemInstruction,
-        30000
+        7500
       );
 
       const raw = result.recommendations ?? [];
@@ -651,29 +586,7 @@ app.post(["/api/outfits/recommend", "/outfits/recommend"], async (req: Request, 
   }
 });
 
-// Internet image search endpoint
-app.post(["/api/outfits/similar-images", "/outfits/similar-images"], async (req: Request, res: Response) => {
-  try {
-    const { style, colors, top, bottom, sole, query } = req.body;
-    const pinterestToken = req.cookies?.pinterest_token || process.env.PINTEREST_ACCESS_TOKEN;
 
-    const response = await searchSimilarOutfitImages({
-      style: style || "",
-      colors: colors || "",
-      top,
-      bottom,
-      sole,
-      query,
-      ...({ pinterestAccessToken: pinterestToken } as any),
-    });
-    res.json(response);
-  } catch (error: any) {
-    console.error("Error in /api/outfits/similar-images:", error);
-    res.status(500).json({
-      error: error?.message || "Failed to search for similar outfit images.",
-    });
-  }
-});
 
 // Live Web Fashion Search endpoint with fashion-only guardrails
 app.get(["/api/fashion/search", "/fashion/search"], async (req: Request, res: Response) => {
@@ -736,46 +649,15 @@ app.get(["/api/fashion/proxy-image", "/fashion/proxy-image"], async (req: Reques
 });
 
 // Config status endpoint
-app.get(["/api/outfits/config-status", "/outfits/config-status"], (req: Request, res: Response) => {
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-  const hasGoogleSearch = Boolean(
-    process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX
-  );
-  const hasSerpApi = Boolean(process.env.SERPAPI_API_KEY);
-  const hasUnsplash = Boolean(process.env.UNSPLASH_ACCESS_KEY);
-  const hasPinterestOauth = Boolean(process.env.PINTEREST_APP_ID || process.env.PINTEREST_CLIENT_ID);
-  const hasPinterestToken = Boolean(
-    req.cookies?.pinterest_token || process.env.PINTEREST_ACCESS_TOKEN
-  );
-
+app.get(["/api/outfits/config-status", "/outfits/config-status"], (_req: Request, res: Response) => {
+  const hasGemini = Boolean(getGeminiApiKey());
   res.json({
     geminiConfigured: hasGemini,
-    pinterest: {
-      connected: hasPinterestToken,
-      oauthConfigured: hasPinterestOauth,
-      redirectUri: getRedirectUri(req),
-    },
-    imageSearchProviders: {
-      googleCustomSearch: hasGoogleSearch,
-      serpApi: hasSerpApi,
-      unsplash: hasUnsplash,
-      pinterestDirect: true,
-      pinterestOfficialApi: hasPinterestToken,
-    },
-    activeImageProvider: hasPinterestToken
-      ? "Pinterest API (Official / Connected)"
-      : hasGoogleSearch
-      ? "Google Custom Search (Pinterest Indexed)"
-      : hasSerpApi
-      ? "SerpAPI"
-      : hasUnsplash
-      ? "Unsplash API"
-      : "Pinterest (Direct)",
   });
 });
 
-// Privacy Policy Endpoint (required by Pinterest Developer verification)
-app.get("/privacy", (_req: Request, res: Response) => {
+// Privacy Policy Endpoint
+app.get(["/privacy", "/api/privacy"], (_req: Request, res: Response) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
@@ -795,9 +677,7 @@ app.get("/privacy", (_req: Request, res: Response) => {
       <p>WearBot provides AI-powered outfit recommendations and style inspiration. We respect your privacy and only process the minimal data required to provide outfit suggestions.</p>
       <h2>2. Data Collection & Processing</h2>
       <p>Uploaded garment images are processed in-memory solely for the purpose of analyzing garment styles and color combinations. We do not sell or share your personal data with third-party advertisers.</p>
-      <h2>3. Pinterest Integration</h2>
-      <p>When you choose to connect your Pinterest account, WearBot accesses only authorized public pins and boards to retrieve visually similar fashion inspiration.</p>
-      <h2>4. Contact</h2>
+      <h2>3. Contact</h2>
       <p>For any privacy inquiries regarding WearBot, contact us through the application portal.</p>
     </body>
     </html>
